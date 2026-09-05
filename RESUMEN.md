@@ -1,5 +1,11 @@
 # De qué se trata este proyecto
 
+> **Repositorio:** <https://github.com/rpeinadojose-cpu/formateador-reportes-dosimetria>
+> (privado — hay que iniciar sesión como `rpeinadojose-cpu`)
+> **Carpeta local:** `D:\IA\CLAUDE\FORMATEADOR_REPORTES`
+> Si esta PC falla, todo se reconstruye desde el repositorio: ver
+> [Recuperar el proyecto](#recuperar-el-proyecto-en-otra-pc) al final.
+
 **Ejecutable que convierte informes PDF de dosimetría personal en CSV**, uno por
 informe, para llevar el control de dosis del personal ocupacionalmente expuesto
 (POE) de un hospital.
@@ -131,3 +137,85 @@ Para agregar un laboratorio: copiar `dosicontrol.py`, adaptar `NOMBRE`,
 Los PDF y los CSV llevan cédula y nombre de trabajadores reales. El
 `.gitignore` los excluye del repositorio; los ejemplos de la documentación están
 anonimizados. **Nunca subir informes ni resultados.**
+
+---
+
+# Recuperar el proyecto en otra PC
+
+## Dónde está todo
+
+| Qué | Dónde |
+|---|---|
+| Código y documentación | <https://github.com/rpeinadojose-cpu/formateador-reportes-dosimetria> (privado) |
+| Cuenta de GitHub | `rpeinadojose-cpu` · `rpeinadojose@gmail.com` |
+| Carpeta local del proyecto | `D:\IA\CLAUDE\FORMATEADOR_REPORTES` |
+| Informes PDF de HDLV | `OneDrive\Ecuador\HDLV\2025\Dosimetría_automatizada` |
+| Informes PDF de Metropolitano | `OneDrive\Ecuador\Hospital Metropolitano\DOSIMETRIA` |
+
+Los informes viven en OneDrive, así que ya están respaldados aparte del
+repositorio. **No hay nada más que rescatar de esta PC**: el ejecutable, la
+configuración y los CSV se regeneran.
+
+## Qué NO está en el repositorio, y por qué
+
+| Archivo | Cómo se recupera |
+|---|---|
+| `dist\consolidador_dosis.exe` (~95 MB) | Se reconstruye con `construir_exe.bat`. Demasiado grande y se regenera solo. |
+| `config.json` | Se crea solo, con los valores por defecto, la primera vez que se ejecuta. |
+| `build\`, `__pycache__\`, `*.spec` | Basura de compilación. |
+| Los PDF y los CSV | Datos personales. Nunca se suben. |
+
+## Pasos
+
+**1. Requisitos**
+
+- [Python 3.9 o superior](https://www.python.org/downloads/) — este proyecto se
+  desarrolló con **3.13.14**. Al instalarlo, marcar *«Add python.exe to PATH»*.
+- [Git](https://git-scm.com/download/win)
+
+**2. Clonar el repositorio**
+
+```bash
+git clone https://github.com/rpeinadojose-cpu/formateador-reportes-dosimetria.git
+```
+
+Como es privado, Git pedirá autenticarse: se abre el navegador y basta con
+iniciar sesión en GitHub con la cuenta `rpeinadojose-cpu`.
+
+**3. Reconstruir el ejecutable**
+
+Doble clic en `construir_exe.bat`. Instala las dependencias y compila; tarda
+unos minutos y deja el resultado en `dist\consolidador_dosis.exe`.
+
+Dependencias (en `requirements.txt`, las instala el `.bat`):
+
+```
+pdfplumber>=0.11     (probado con 0.11.10)
+pyinstaller>=6.0     (probado con 6.22.2)
+```
+
+**4. Usarlo**
+
+Copiar `dist\consolidador_dosis.exe` a la carpeta con los PDF y doble clic.
+Revisar siempre `lector_dosis.log` antes de dar los CSV por buenos.
+
+## Para volver a subir cambios
+
+Si es una máquina nueva, primero identificarse ante Git:
+
+```bash
+git config --global user.name "rpeinadojose-cpu"
+git config --global user.email "rpeinadojose@gmail.com"
+```
+
+Y después de cada cambio:
+
+```bash
+git add -A && git commit -m "descripción del cambio" && git push
+```
+
+## Si se pierde el acceso a GitHub
+
+El proyecto entero son ~1600 líneas en 6 archivos de texto. Basta con copiar la
+carpeta `D:\IA\CLAUDE\FORMATEADOR_REPORTES` (sin `build\` ni `dist\`) a
+OneDrive o a un USB para tener un respaldo independiente del repositorio.
