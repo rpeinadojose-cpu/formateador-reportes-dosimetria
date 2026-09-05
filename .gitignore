@@ -1,0 +1,18 @@
+# --- Compilación -----------------------------------------------------------
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+
+# --- Configuración local (se regenera sola en la primera ejecución) --------
+config.json
+
+# --- Datos ----------------------------------------------------------------
+# Los informes de dosis y los CSV que se generan contienen datos personales
+# (cédula y nombre de trabajadores expuestos). NUNCA deben subirse al repo.
+*.pdf
+*.csv
+*.xlsx
+*.xls
+*.log
