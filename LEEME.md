@@ -1,6 +1,8 @@
 # Lector de informes de dosis (POE) → CSV
 
-Convierte los informes PDF de dosimetría personal en un CSV por informe.
+Convierte los informes PDF de dosimetría personal en un CSV por centro, sede y
+período. Reconoce los formatos de **DOSICONTROL S.A.S.** y del **laboratorio
+del IESS**.
 
 ---
 
@@ -18,13 +20,29 @@ consolidador_dosis.exe "C:\ruta\informe.pdf"       REM un solo informe
 consolidador_dosis.exe "C:\ruta" -s "C:\salida"    REM salida en otra carpeta
 ```
 
+Por defecto lee **sólo los PDF de la carpeta indicada**, sin entrar en sus
+subcarpetas: así lo que se procesa es exactamente lo que usted señaló. Los
+informes del IESS vienen repartidos en una carpeta por práctica, y para esos
+hay que pedirlo:
+
+```bat
+consolidador_dosis.exe "C:uta\INFORMES_IESS" -r
+```
+
+o dejarlo fijo con `"buscar_en_subcarpetas": true` en `config.json`. El log dice
+siempre cuántos PDF encontró y si miró o no las subcarpetas.
+
+Los CSV se escriben **siempre en una sola carpeta de salida** (la indicada, o la
+de origen si no se indica otra): aunque lea PDF de varias subcarpetas, nunca
+escribe dentro de ellas.
+
 Cada corrida vuelve a leer todos los PDF y reescribe los CSV, así que basta con
 agregar informes nuevos a la carpeta y volver a ejecutar. Se deja además un
 `lector_dosis.log` con el detalle de la corrida.
 
 ## Salida
 
-Un archivo por informe:
+Un archivo por centro, sede y período:
 
 ```
 <CENTRO>_<SEDE>_<DESDE>_<HASTA>.csv
@@ -34,6 +52,12 @@ Ejemplo: `HOSPITAL_DE_LOS_VALLES_CUMBAYA_2024-03-18_2024-05-17.csv`
 
 Las fechas son las del período del informe (`Lectura Desde` / `Lectura Hasta`).
 Identifican el informe sin depender de que el laboratorio numere ciclos.
+
+**Varios PDF pueden alimentar un mismo CSV.** El IESS emite un archivo por
+magnitud —cuerpo entero (Hp(10)), cristalino (Hp(3)) y extremidades
+(Hp(0,07))— para el mismo período: los tres se juntan en un solo CSV y las tres
+lecturas de una persona quedan en su fila. El log dice de qué informes salió
+cada archivo.
 
 > La sede va en el nombre porque, sin ella, `Bosque_ciclo_1.pdf` y
 > `Cumbaya_ciclo_1.pdf` producirían el mismo archivo y uno sobrescribiría al
@@ -122,7 +146,10 @@ Se crea solo la primera vez que se ejecuta, junto al `.exe`. Claves útiles:
 | `tratar_guiones_como` | Qué poner cuando el usuario no tiene dosímetro que mida esa magnitud. `""` (actual: celda en blanco), `"NR"` o `"NE"`. |
 | `notas_a_ne` | Notas que se convierten en `NE`. Hoy `["NC"]`; puede agregar `"DP"`, `"NU"`, `"DOP"`. |
 | `nota_aplica_a_toda_la_fila` | Sólo aplica con `una_fila_por_usuario: false`. Al fusionar, cada magnitud toma su valor del dosímetro que la mide. |
+| `buscar_en_subcarpetas` | Entrar en las subcarpetas de la carpeta de reportes. `true` por defecto. |
 | `sede_por_defecto` | Sede a usar cuando el informe no la trae entre paréntesis. |
+| `iess.hospital` / `iess.sede_por_defecto` | Centro y sede de los informes del IESS, que no los nombran. |
+| `practica_por_palabra_clave` | Normaliza la práctica por palabras clave (prefijo de palabra, sin tildes). |
 | `mapa_practica` | Normaliza el título de tabla (`Área: ...`) que va en la columna `practica`. |
 | `texto_ciclo_en_observacion` | Texto del ciclo anexado a `observacion`. `"Ciclo {ciclo}"` por defecto; `""` para no anexarlo. |
 | `formato_ciclo` | Plantilla de la etiqueta del ciclo. `"{anio}-C{numero}"` por defecto. |
@@ -136,19 +163,69 @@ Los niveles de registro (0.1 / 0.6 / 2 mSv) están fijados por el Acuerdo
 Ministerial 245 y viven en `laboratorios/base.py`; no se editan por
 configuración.
 
+## Laboratorio del IESS
+
+*Informe Dosimetría Personal Termoluminiscente*. Se reconoce por el encabezado
+de la tabla —`N.- | NOMBRES Y APELLIDOS | CEDULA | CODIGO DE DOSIMETRO | DOSIS
+(mSv) Hp(x) | DOSIS ANUAL ACUMULADA | FIRMA RECIBIDO`—, que es lo único que lo
+identifica; de ahí sale también la magnitud, lo único que cambia entre
+archivos.
+
+| Dato | De dónde sale |
+|---|---|
+| Período | `Lectura: Bimensual Período: 01/01/25 - 28/02/25`. Es del informe completo: todas las filas heredan las mismas fechas, el formato no las repite por usuario. |
+| Práctica y sede | La línea bajo `DATOS DE LA INSTITUCIÓN USUARIA`. `RADIODIAGNÓSTICO - GUAYAQUIL` → práctica *Radiodiagnóstico*, sede *GUAYAQUIL*. Si sólo trae la práctica, la sede es la de `iess.sede_por_defecto` (**HECAM**). |
+| Hospital | No aparece en el informe: se toma de `iess.hospital` (**IESS**). |
+
+Las notas significan otra cosa que en DOSICONTROL:
+
+| En el informe del IESS | En el CSV |
+|---|---|
+| `NR` (dosímetro **no retornado**) | `NE` |
+| `NU` (no usado), `DD` (dañado) | `NE` |
+| `<LD` (menor al límite detectable) | `NR` |
+
+> Cuidado con el `NR`: en el informe del IESS significa *no retornado*, y en el
+> CSV significa *por debajo del nivel de registro*. El código original queda en
+> `observacion` para poder distinguirlos.
+
+### Práctica por palabras clave
+
+La práctica del IESS es texto libre, así que se normaliza buscando palabras
+clave sin tildes ni mayúsculas (`practica_por_palabra_clave` en `config.json`).
+Cada clave se busca como **prefijo de palabra**: `gastro` reconoce
+*GASTROENTEROLOGÍA* y `urolog` reconoce *URÓLOGOS*. Manda el orden, así que las
+reglas más específicas van primero.
+
+| Práctica | Reconoce, entre otras |
+|---|---|
+| Intervencionismo | hemodinamia, intervencionismo, angiografía, cateterismo, electrofisiología, arritmias, marcapasos, traumatología, ortopedia, neurocirugía, gastroenterología, endoscopía, CPRE, urología, litotricia, vascular |
+| Ciclotrón | ciclotrón |
+| Medicina Nuclear | medicina nuclear, PET, SPECT, endocrinología, gammagrafía, radiofármacos |
+| Radioterapia | radioterapia, teleterapia, braquiterapia, acelerador |
+| Radiodiagnóstico | radiodiagnóstico, radiología, imagenología, tomografía, mamografía, densitometría, rayos X, fluoroscopía |
+
+Se aplica sólo cuando `mapa_practica` (coincidencia exacta) no tiene entrada
+para ese texto, así que las prácticas de DOSICONTROL siguen mandando sobre ella.
+
 ## Agregar otro laboratorio
 
-Hoy está implementado **DOSICONTROL S.A.S.** (informe `DC-008`). Para los otros
-dos laboratorios del país:
+Faltan los formatos del tercer laboratorio del país:
 
-1. Copie `laboratorios/dosicontrol.py` a `laboratorios/<nuevo_lab>.py` y adapte
-   `NOMBRE`, `detectar()` y `parsear()`.
+1. Copie `laboratorios/iess.py` o `laboratorios/dosicontrol.py` a
+   `laboratorios/<nuevo_lab>.py` y adapte `NOMBRE`, `detectar()`, `parsear()` y
+   `fila_titulo()`.
 2. Regístrelo en `laboratorios/__init__.py` (import + lista `PARSERS`).
 3. Reconstruya con `construir_exe.bat`.
 
 `detectar()` recibe el texto de la primera página y devuelve `True` si el
-informe es de ese laboratorio. Los PDF que ningún parser reconoce se omiten y
-quedan anotados en el log.
+informe es de ese laboratorio. `parsear()` devuelve `(registros, avisos,
+resumen)`. Los PDF que ningún parser reconoce se omiten y quedan anotados en el
+log.
+
+Los dos formatos ya implementados sirven de plantilla para casos distintos:
+DOSICONTROL reconstruye la tabla por coordenadas (no tiene bordes) y el IESS la
+lee con `extract_tables()` (sí los tiene).
 
 ## Cómo lee el PDF (por si hay que depurar)
 

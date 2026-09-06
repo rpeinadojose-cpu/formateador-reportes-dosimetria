@@ -4,7 +4,7 @@ Lector de informes de dosis (POE) -> CSV
 ========================================
 
 Lee informes PDF de dosimetria personal, identifica el laboratorio que los
-emitio y genera UN CSV POR INFORME con las columnas:
+emitio y genera UN CSV POR CENTRO, SEDE Y PERIODO con las columnas:
 
     Lectura Desde;<fecha>;Lectura Hasta;<fecha>      <- fila de titulo
     cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp3;
@@ -18,8 +18,12 @@ Reglas aplicadas a las dosis del periodo (Acuerdo Ministerial 245):
   * Lectura por debajo del nivel de registro -> "NR"
     Hp(10) < 0.1 mSv, Hp(3) < 0.6 mSv, Hp(0.07) < 2 mSv
   * Nota NC (dosimetro no canjeado) -> "NE"
-  * Un usuario con varios dosimetros (cuerpo entero + anillo/cristalino) se
-    resume en UNA fila: cada magnitud se toma del dosimetro que la mide.
+  * Un usuario con varios dosimetros (cuerpo entero + cristalino/extremidades)
+    se resume en UNA fila: cada magnitud se toma del dosimetro que la mide,
+    aunque vengan en archivos distintos.
+
+Laboratorios reconocidos: DOSICONTROL S.A.S. (informe DC-008) y el laboratorio
+del IESS (Informe Dosimetria Personal Termoluminiscente).
 
 Uso:
     consolidador_dosis.exe                        -> carpeta del ejecutable
@@ -47,7 +51,7 @@ from laboratorios.base import (
     CAMPOS_SALIDA, nombre_archivo_seguro, limpiar,
 )
 
-VERSION = "2.2.0"
+VERSION = "3.1.0"
 
 # --------------------------------------------------------------------------
 # Configuracion por defecto
@@ -60,6 +64,12 @@ CONFIG_DEFECTO = {
     ),
     "carpeta_reportes": "",
     "carpeta_salida": "",
+    # Buscar tambien dentro de las subcarpetas de la carpeta de reportes.
+    # Desactivado por defecto a proposito: asi el programa solo mira la carpeta
+    # que se le indica y nunca toca informes guardados en subcarpetas. Los
+    # informes del IESS vienen repartidos en una carpeta por practica; para
+    # esos, actívelo aqui o pase --subcarpetas en la linea de comandos.
+    "buscar_en_subcarpetas": False,
     "separador_csv": ";",
     "codificacion_csv": "utf-8-sig",
 
@@ -107,6 +117,39 @@ CONFIG_DEFECTO = {
     },
     "sede_por_defecto_general": "MATRIZ",
 
+    # Ajustes propios del laboratorio del IESS. Sus informes no nombran el
+    # hospital: la linea "DATOS DE LA INSTITUCION USUARIA" trae la practica y,
+    # tras un guion, la sede. Cuando no trae sede se usa la de por defecto.
+    "iess": {
+        "hospital": "IESS",
+        "sede_por_defecto": "HECAM"
+    },
+
+    # Normalizacion de la practica por palabras clave, sin tildes ni
+    # mayusculas. Cada clave se busca como prefijo de palabra ("gastro"
+    # reconoce "gastroenterologia"). Manda el orden: la primera regla que
+    # coincide gana, asi que las mas especificas van primero. Se aplica cuando
+    # "mapa_practica" (coincidencia exacta) no tiene una entrada para el texto.
+    "practica_por_palabra_clave": [
+        {"practica": "Intervencionismo",
+         "contiene": ["hemodinamia", "intervencionis", "angiograf", "cateteris",
+                      "electrofisiolog", "arritmi", "marcapaso", "traumatolog",
+                      "ortoped", "neurocirug", "gastro", "endoscop", "cpre",
+                      "colangio", "urolog", "litotric", "vascular",
+                      "quirofano hibrido", "arco en c"]},
+        {"practica": "Ciclotrón",
+         "contiene": ["ciclotron"]},
+        {"practica": "Medicina Nuclear",
+         "contiene": ["medicina nuclear", "pet", "spect", "endocrinolog",
+                      "gammagraf", "gamma camara", "radiofarmac", "yodo"]},
+        {"practica": "Radioterapia",
+         "contiene": ["radioterap", "teleterap", "braquiterap", "acelerador"]},
+        {"practica": "Radiodiagnóstico",
+         "contiene": ["radiodiagnostico", "radiolog", "imagenolog", "imagen",
+                      "tomograf", "mamograf", "densitometr", "rayos x",
+                      "fluoroscop", "odontolog", "dental"]}
+    ],
+
     # Normalizacion del area/practica que aparece como titulo de cada tabla.
     # La clave se compara sin tildes ni mayusculas; el valor se escribe tal cual.
     # Un area que no este aqui se copia literal desde el informe.
@@ -130,7 +173,14 @@ def cargar_config(ruta):
     if os.path.isfile(ruta):
         try:
             with open(ruta, "r", encoding="utf-8-sig") as fh:
-                cfg.update(json.load(fh))
+                guardada = json.load(fh)
+            for k, v in guardada.items():
+                # las secciones por laboratorio se mezclan, no se reemplazan:
+                # asi no se pierden claves al editar solo una
+                if isinstance(v, dict) and isinstance(cfg.get(k), dict):
+                    cfg[k].update(v)
+                else:
+                    cfg[k] = v
         except Exception as exc:
             print("  ! config.json no se pudo leer (%s). Se usan valores por defecto." % exc)
     else:
@@ -149,12 +199,31 @@ def texto_primera_pagina(ruta_pdf):
         return pdf.pages[0].extract_text() or ""
 
 
-def listar_pdfs(destino):
-    """Acepta una carpeta o la ruta de un PDF suelto."""
+def listar_pdfs(destino, recursivo=False):
+    """
+    Acepta una carpeta o la ruta de un PDF suelto.
+
+    Por defecto NO entra en las subcarpetas, para no leer ni sobrescribir nada
+    fuera de la carpeta indicada. Con recursivo=True si entra: los informes del
+    IESS vienen organizados en una carpeta por practica. Se ignoran los
+    archivos de bloqueo que dejan Office/LibreOffice cuando el PDF esta
+    abierto.
+    """
     if os.path.isfile(destino):
         return [destino] if destino.lower().endswith(".pdf") else []
-    return sorted(os.path.join(destino, f) for f in os.listdir(destino)
-                  if f.lower().endswith(".pdf"))
+
+    def util(nombre):
+        return (nombre.lower().endswith(".pdf")
+                and not nombre.startswith((".~", "~$")))
+
+    if not recursivo:
+        return sorted(os.path.join(destino, f) for f in os.listdir(destino)
+                      if util(f))
+
+    encontrados = []
+    for raiz, _, archivos in os.walk(destino):
+        encontrados.extend(os.path.join(raiz, f) for f in archivos if util(f))
+    return sorted(encontrados)
 
 
 # --------------------------------------------------------------------------
@@ -239,7 +308,7 @@ def agrupar_por_usuario(registros, cfg, incidencias, origen):
 
     orden, grupos = [], {}
     for r in registros:
-        k = clave_informe(r) + (r.cedula,)
+        k = clave_informe(r) + (r.practica, r.cedula)
         if k not in grupos:
             grupos[k] = []
             orden.append(k)
@@ -293,19 +362,31 @@ def sin_repetidas(registros, incidencias, origen):
     cargado dos veces). Un usuario con varios dosimetros conserva una fila por
     dosimetro, porque la serie los diferencia.
     """
-    vistas = set()
+    vistas = {}
     unicas = []
+    repetidas = {}          # (archivo que la trajo primero, archivo repetido) -> n
     for r in registros:
         d = r.como_dict()
         d.pop("archivo_origen", None)
         k = tuple(d.items())
         if k in vistas:
-            incidencias.append(
-                "%s: fila identica descartada (cedula %s, serie %s)"
-                % (origen, r.cedula, r.serie_dosimetro))
+            par = (vistas[k], r.archivo_origen)
+            repetidas[par] = repetidas.get(par, 0) + 1
             continue
-        vistas.add(k)
+        vistas[k] = r.archivo_origen
         unicas.append(r)
+
+    # Un aviso por par de archivos, no uno por fila: cuando el mismo informe
+    # esta en dos carpetas se repetirian cientos de lineas iguales.
+    for (antes, ahora), n in repetidas.items():
+        if antes == ahora:
+            incidencias.append(
+                "%s: %d fila(s) repetidas dentro del mismo informe, se "
+                "descartaron" % (ahora, n))
+        else:
+            incidencias.append(
+                "%d fila(s) identicas descartadas: '%s' y '%s' traen los mismos "
+                "datos (el mismo informe en dos carpetas)" % (n, antes, ahora))
     return unicas
 
 
@@ -332,16 +413,28 @@ def escribir_csv(registros, carpeta_salida, cfg, log, parser=None):
 
 # --------------------------------------------------------------------------
 def procesar(destino, salida, cfg, log):
-    pdfs = listar_pdfs(destino)
-    log("PDFs encontrados: %d" % len(pdfs))
+    recursivo = bool(cfg.get("buscar_en_subcarpetas", False))
+    pdfs = listar_pdfs(destino, recursivo)
+    log("PDFs encontrados: %d   (%s)"
+        % (len(pdfs), "incluyendo subcarpetas" if recursivo
+           else "solo esta carpeta, sin subcarpetas"))
     log("")
 
     incidencias = []
     generados = []
     total = 0
+    # Un CSV por (centro, sede, periodo). Varios PDF pueden alimentar el mismo:
+    # el IESS emite un archivo por magnitud (cuerpo entero, cristalino,
+    # extremidades) para el mismo periodo, y los tres van al mismo CSV.
+    acumulado = {}
 
     for ruta in pdfs:
-        nombre = os.path.basename(ruta)
+        # Ruta relativa a la carpeta de origen: al buscar en subcarpetas puede
+        # haber dos informes con el mismo nombre y hay que poder distinguirlos.
+        try:
+            nombre = os.path.relpath(ruta, destino) if os.path.isdir(destino)                 else os.path.basename(ruta)
+        except ValueError:
+            nombre = os.path.basename(ruta)
         try:
             parser = laboratorios.identificar(texto_primera_pagina(ruta))
             if parser is None:
@@ -373,29 +466,40 @@ def procesar(destino, salida, cfg, log):
                     "%s: no se extrajo ninguna fila del informe" % nombre)
                 log("      SIN FILAS")
                 continue
-            registros = sin_repetidas(registros, incidencias, nombre)
-            registros = agrupar_por_usuario(registros, cfg, incidencias, nombre)
-            anexar_ciclo(registros, cfg)
 
-            # un informe = un periodo, pero se agrupa por si trajera varios
-            grupos = {}
             for r in registros:
-                grupos.setdefault(clave_informe(r), []).append(r)
-
-            for clave in grupos:
-                archivo = escribir_csv(grupos[clave], salida, cfg, log, parser)
-                if archivo in generados:
-                    incidencias.append(
-                        "%s sobrescribio un CSV generado antes en esta corrida "
-                        "(%s): hay dos informes del mismo centro, sede y periodo"
-                        % (nombre, os.path.basename(archivo)))
-                generados.append(archivo)
-                total += len(grupos[clave])
+                grupo = acumulado.setdefault(
+                    clave_informe(r),
+                    {"registros": [], "parser": parser, "archivos": []})
+                grupo["registros"].append(r)
+                if nombre not in grupo["archivos"]:
+                    grupo["archivos"].append(nombre)
 
         except Exception as exc:
             incidencias.append("%s: ERROR al procesar -> %s" % (nombre, exc))
             log("  %-38s ERROR: %s" % (nombre, exc))
             log(traceback.format_exc())
+
+    # ---------- un CSV por centro, sede y periodo ----------
+    # Se escribe al final, cuando ya se leyeron todos los PDF: el IESS emite un
+    # archivo por magnitud (cuerpo entero, cristalino, extremidades) del mismo
+    # periodo, y los tres tienen que caer en el mismo CSV.
+    if acumulado:
+        log("")
+        log("-" * 74)
+        log("CSV GENERADOS")
+    for clave in sorted(acumulado):
+        grupo = acumulado[clave]
+        origen = ", ".join(grupo["archivos"])
+        regs = sin_repetidas(grupo["registros"], incidencias, origen)
+        regs = agrupar_por_usuario(regs, cfg, incidencias, origen)
+        anexar_ciclo(regs, cfg)
+        archivo = escribir_csv(regs, salida, cfg, log, grupo["parser"])
+        if len(grupo["archivos"]) > 1:
+            log("       a partir de %d informes: %s"
+                % (len(grupo["archivos"]), origen))
+        generados.append(archivo)
+        total += len(regs)
 
     return generados, total, incidencias
 
@@ -411,11 +515,15 @@ def main(argv=None):
     ap.add_argument("-s", "--salida", default=None,
                     help="carpeta donde escribir los CSV")
     ap.add_argument("-c", "--config", default=os.path.join(base, "config.json"))
+    ap.add_argument("-r", "--subcarpetas", action="store_true",
+                    help="buscar tambien dentro de las subcarpetas")
     ap.add_argument("--sin-pausa", action="store_true",
                     help="no esperar ENTER al terminar")
     args = ap.parse_args(argv)
 
     cfg = cargar_config(args.config)
+    if args.subcarpetas:
+        cfg["buscar_en_subcarpetas"] = True
 
     destino = args.destino or cfg.get("carpeta_reportes") or base
     destino = os.path.abspath(os.path.expandvars(os.path.expanduser(destino)))

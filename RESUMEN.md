@@ -24,8 +24,21 @@ uno con su propio formato de informe. Un mismo hospital puede tener varias sedes
 y cada trabajador puede llevar varios dosímetros a la vez. Extraer esto a mano
 es lento y se presta a errores silenciosos.
 
-Hoy está implementado **DOSICONTROL S.A.S.** (informe `DC-008`). Faltan los
-otros dos: la arquitectura ya está preparada para ellos.
+Hoy están implementados **DOSICONTROL S.A.S.** (informe `DC-008`) y el
+**laboratorio del IESS** (*Informe Dosimetría Personal Termoluminiscente*).
+Falta el tercero: la arquitectura ya está preparada.
+
+Los dos formatos no se parecen en nada, y eso marcó el diseño:
+
+| | DOSICONTROL | IESS |
+|---|---|---|
+| Tabla | Sin bordes: se reconstruye por coordenadas | Con bordes: `extract_tables()` |
+| Magnitudes | Las tres en el mismo informe | **Una por archivo**: cuerpo entero, cristalino y extremidades van en PDF separados |
+| Fechas | Por usuario | Del informe completo |
+| `NR` | No aplica | Significa *dosímetro no retornado* → `NE` en el CSV |
+
+Por eso **varios PDF pueden alimentar un mismo CSV**: se agrupa por centro,
+sede y período, no por archivo.
 
 ## Qué produce
 
@@ -117,6 +130,7 @@ consolidador_dosis.py      programa principal: CSV, agrupación, log, config
 laboratorios/
     base.py                Registro, umbrales, conversión NR/NE, utilidades
     dosicontrol.py         parser del formato DC-008
+    iess.py                parser del formato termoluminiscente del IESS
     __init__.py            registro de parsers y detección automática
 LEEME.md                   manual de uso y configuración
 construir_exe.bat          compila el .exe con PyInstaller
@@ -128,9 +142,11 @@ Para agregar un laboratorio: copiar `dosicontrol.py`, adaptar `NOMBRE`,
 
 ## Estado
 
-- **DOSICONTROL** implementado y verificado sobre 32 informes reales de dos
-  hospitales (1965 usuarios), sin incidencias.
-- **Pendiente:** los otros dos laboratorios del país.
+- **DOSICONTROL** verificado sobre 57 informes de dos hospitales, sin
+  incidencias.
+- **IESS** verificado sobre 54 informes (3 prácticas × 6 períodos × 3
+  magnitudes), sin incidencias.
+- **Pendiente:** el tercer laboratorio del país.
 
 ## Privacidad
 

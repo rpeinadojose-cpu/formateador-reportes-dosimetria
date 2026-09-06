@@ -103,6 +103,29 @@ def normalizar_clave(texto: str) -> str:
     return re.sub(r"\s+", " ", sin_tildes(limpiar(texto)).upper()).strip()
 
 
+def practica_por_palabras(texto, cfg):
+    """
+    Normaliza la practica buscando palabras clave, sin tildes ni mayusculas.
+
+    Cada palabra clave se busca como PREFIJO DE PALABRA, de modo que "gastro"
+    reconoce "GASTROENTEROLOGIA" y "urolog" reconoce "UROLOGOS", pero "pet" no
+    se dispara dentro de "COMPETENCIA". El orden de las reglas manda: las mas
+    especificas van primero (p.ej. "radiologia intervencionista" cae en
+    Intervencionismo, no en Radiodiagnostico).
+
+    Devuelve None si ninguna regla aplica, para que el llamador conserve el
+    texto original del informe.
+    """
+    t = normalizar_clave(texto)
+    if not t:
+        return None
+    for regla in cfg.get("practica_por_palabra_clave") or []:
+        for clave in regla.get("contiene") or []:
+            if re.search(r"\b" + re.escape(normalizar_clave(clave)), t):
+                return regla.get("practica") or texto
+    return None
+
+
 def nombre_archivo_seguro(texto: str) -> str:
     texto = limpiar(texto)
     texto = re.sub(r'[<>:"/\|?*]', "", texto)

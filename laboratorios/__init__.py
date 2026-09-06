@@ -8,9 +8,11 @@ Para agregar un laboratorio nuevo:
   2. importarlo abajo y agregarlo a la lista PARSERS.
 """
 from . import dosicontrol
+from . import iess
 
 PARSERS = [
     dosicontrol,
+    iess,
 ]
 
 
