@@ -33,7 +33,9 @@ LOGO = [
 # Columnas que ocupa la Q (el anillo del gantry): se pintan en turquesa.
 Q_INI, Q_FIN = 39, 56
 
-LEMA = "Cuidamos con calidad, protegemos con ciencia"
+# El lema va con las letras separadas: se lee mas grande sin necesidad de
+# dibujarlo con arte, que a este ancho quedaria ilegible.
+LEMA = ["CUIDAMOS CON CALIDAD,", "PROTEGEMOS CON CIENCIA"]
 
 # Colores del logotipo, en la paleta de 256
 AZUL = "\033[38;5;25m"      # azul del logotipo
@@ -101,6 +103,7 @@ def banner(color=False):
     """Lineas del encabezado de pantalla. No va al archivo de log."""
     lineas = ["=" * ANCHO]
     lineas.extend(_pintar(l) if color else l for l in LOGO)
-    lema = LEMA.center(ANCHO).rstrip()
-    lineas.append(TENUE + lema + FIN if color else lema)
+    for renglon in LEMA:
+        texto = " ".join(renglon).center(ANCHO).rstrip()
+        lineas.append(AZUL + texto + FIN if color else texto)
     return lineas          # el "=" de cierre lo pone el encabezado corto
