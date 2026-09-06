@@ -132,6 +132,7 @@ laboratorios/
     base.py                Registro, umbrales, conversión NR/NE, utilidades
     dosicontrol.py         parser del formato DC-008
     iess.py                parser del formato termoluminiscente del IESS
+    logo.py                logotipo de FISIQA para la consola, y el color
     __init__.py            registro de parsers y detección automática
 LEEME.md                   manual de uso y configuración
 construir_exe.bat          compila el .exe con PyInstaller
@@ -148,6 +149,16 @@ Para agregar un laboratorio: copiar `dosicontrol.py`, adaptar `NOMBRE`,
 - **IESS** verificado sobre 54 informes (3 prácticas × 6 períodos × 3
   magnitudes), sin incidencias.
 - **Pendiente:** el tercer laboratorio del país.
+
+## Presentación
+
+Al abrir, el programa dibuja el logotipo de **FISIQA** con el lema
+*«Cuidamos con calidad, protegemos con ciencia»*, la Q —el anillo del
+gantry— en turquesa y el resto en azul. Es ASCII de 7 bits a propósito: la
+consola de Windows con codificación heredada convierte en `?` cualquier
+carácter fuera de esa tabla. El color se activa solo si la consola entiende
+ANSI, y el logotipo se dibuja **sólo en pantalla**: el `lector_dosis.log`
+guarda el encabezado corto.
 
 ## Privacidad
 
