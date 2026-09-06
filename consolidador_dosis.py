@@ -47,6 +47,7 @@ from datetime import datetime
 import pdfplumber
 
 import laboratorios
+from laboratorios import logo
 from laboratorios.base import (
     CAMPOS_SALIDA, nombre_archivo_seguro, limpiar, normalizar_clave,
 )
@@ -64,6 +65,11 @@ CONFIG_DEFECTO = {
     ),
     "carpeta_reportes": "",
     "carpeta_salida": "",
+    # Logotipo de FISIQA en color al abrir el programa. Solo se dibuja en la
+    # consola: el archivo lector_dosis.log guarda el encabezado corto.
+    # "auto" pinta en color solo si la consola entiende ANSI; tambien
+    # "siempre" y "nunca".
+    "color_en_consola": "auto",
     # Buscar tambien dentro de las subcarpetas de la carpeta de reportes.
     # Desactivado por defecto a proposito: asi el programa solo mira la carpeta
     # que se le indica y nunca toca informes guardados en subcarpetas. Los
@@ -550,6 +556,13 @@ def main(argv=None):
             enc = getattr(sys.stdout, "encoding", None) or "ascii"
             print(msg.encode(enc, "replace").decode(enc, "replace"))
         lineas_log.append(msg)
+
+    # El logotipo va solo a la pantalla, nunca al archivo de log.
+    for linea in logo.banner(logo.hay_color(cfg.get("color_en_consola", "auto"))):
+        try:
+            print(linea)
+        except UnicodeEncodeError:
+            pass
 
     log("=" * 74)
     log(" LECTOR DE INFORMES DE DOSIS -> CSV   v%s" % VERSION)

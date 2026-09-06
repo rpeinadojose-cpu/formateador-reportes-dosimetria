@@ -156,6 +156,7 @@ Se crea solo la primera vez que se ejecuta, junto al `.exe`. Claves útiles:
 | `formato_ciclo` | Plantilla de la etiqueta del ciclo. `"{anio}-C{numero}"` por defecto. |
 | `anio_del_ciclo` | De qué fecha sale el año: `"fin"` (actual) o `"inicio"`. |
 | `fila_titulo_periodo` | Escribir la primera fila con el período de lectura. `true` por defecto. |
+| `color_en_consola` | `"auto"` (actual), `"siempre"` o `"nunca"`. |
 | `separador_csv` | `";"` por defecto. |
 | `incluir_sede_en_nombre` | Incluir la sede en el nombre del archivo. |
 | `patron_nombre_salida` | Marcadores: `{centro}` `{hospital}` `{sede}` `{desde}` `{hasta}` `{ciclo}` `{ciclo_num}`. |
@@ -251,6 +252,30 @@ No usa posiciones fijas de texto. Toma las coordenadas de cada palabra y:
   queda cortada entre dos páginas;
 * verifica que la numeración de filas de cada sección sea correlativa (1..N) y
   reporta en el log cualquier salto, que indicaría una fila no leída.
+
+## Logotipo en pantalla
+
+Al abrir, el programa dibuja el logotipo de **FISIQA** con el lema
+*«Cuidamos con calidad, protegemos con ciencia»*. La **Q** —el anillo del
+gantry— va en turquesa y el resto en azul, como el logotipo original.
+
+Todo el arte es ASCII de 7 bits a propósito: la consola de Windows con
+codificación heredada convierte en `?` cualquier carácter fuera de esa tabla.
+
+El color se decide solo (`color_en_consola`):
+
+| Valor | Qué hace |
+|---|---|
+| `"auto"` (por defecto) | Pinta en color sólo si la salida es una consola de verdad que entiende ANSI. Si se redirige a un archivo o a una tubería, sale en blanco y negro para no ensuciarlo. Respeta `NO_COLOR` y `TERM=dumb`. |
+| `"siempre"` | Fuerza el color. |
+| `"nunca"` | Nunca usa color. |
+
+En Windows el programa le pide a la consola que interprete ANSI antes de
+escribir; si no lo consigue, cae solo a blanco y negro.
+
+**El logotipo se dibuja sólo en pantalla.** El archivo `lector_dosis.log`
+conserva el encabezado corto de texto, para no llenarse de arte en cada
+corrida.
 
 ## El log (`lector_dosis.log`)
 
