@@ -48,10 +48,10 @@ import pdfplumber
 
 import laboratorios
 from laboratorios.base import (
-    CAMPOS_SALIDA, nombre_archivo_seguro, limpiar,
+    CAMPOS_SALIDA, nombre_archivo_seguro, limpiar, normalizar_clave,
 )
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 
 # --------------------------------------------------------------------------
 # Configuracion por defecto
@@ -121,8 +121,15 @@ CONFIG_DEFECTO = {
     # hospital: la linea "DATOS DE LA INSTITUCION USUARIA" trae la practica y,
     # tras un guion, la sede. Cuando no trae sede se usa la de por defecto.
     "iess": {
-        "hospital": "IESS",
-        "sede_por_defecto": "HECAM"
+        "hospital": "HECAM",
+        "sede_por_defecto": "HECAM",
+        # Sedes ya conocidas. Sirven para resolver el orden de la linea
+        # "DATOS DE LA INSTITUCION USUARIA": si una de las dos partes esta en
+        # esta lista, esa es la sede y la otra la practica, sin importar cual
+        # venga primero. Agregue aqui las sedes nuevas que vayan apareciendo.
+        "sedes_conocidas": ["HECAM", "GUAYAQUIL", "QUITO", "CUENCA", "AMBATO",
+                            "PORTOVIEJO", "MANTA", "MACHALA", "LOJA",
+                            "IBARRA", "RIOBAMBA", "SANTO DOMINGO", "ESMERALDAS"]
     },
 
     # Normalizacion de la practica por palabras clave, sin tildes ni
@@ -131,7 +138,7 @@ CONFIG_DEFECTO = {
     # coincide gana, asi que las mas especificas van primero. Se aplica cuando
     # "mapa_practica" (coincidencia exacta) no tiene una entrada para el texto.
     "practica_por_palabra_clave": [
-        {"practica": "Intervencionismo",
+        {"practica": "Hemodinamia e intervencionismo",
          "contiene": ["hemodinamia", "intervencionis", "angiograf", "cateteris",
                       "electrofisiolog", "arritmi", "marcapaso", "traumatolog",
                       "ortoped", "neurocirug", "gastro", "endoscop", "cpre",
@@ -252,7 +259,9 @@ def nombre_salida(registros, cfg):
     """<centro>[_<sede>]_<desde>_<hasta>"""
     reg = registros[0]
     centro = reg.hospital
-    if cfg.get("incluir_sede_en_nombre", True) and reg.sede:
+    # La sede se omite si repite el nombre del centro: evita "HECAM_HECAM_...".
+    if (cfg.get("incluir_sede_en_nombre", True) and reg.sede
+            and normalizar_clave(reg.sede) != normalizar_clave(reg.hospital)):
         centro = "%s %s" % (centro, reg.sede)
     desde, hasta = periodo(registros)
     desde = desde.replace("/", "-")

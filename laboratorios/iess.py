@@ -116,22 +116,67 @@ def _periodo(texto):
     return _a_fecha(m.group(1)), _a_fecha(m.group(2))
 
 
-def _institucion(texto, sede_defecto, cfg):
+def _institucion(texto, ajustes, cfg):
     """
-    'DATOS DE LA INSTITUCIÓN USUARIA:' / 'RADIODIAGNÓSTICO - GUAYAQUIL'
-      -> practica normalizada, sede
+    Lee 'DATOS DE LA INSTITUCIÓN USUARIA' y devuelve (practica, sede, avisos).
 
-    Cuando la linea trae solo la practica, la sede es la de por defecto.
+    La linea puede venir en cualquiera de los dos ordenes:
+        RADIODIAGNÓSTICO - GUAYAQUIL      (practica - sede)
+        GUAYAQUIL - RADIODIAGNÓSTICO      (sede - practica)
+
+    Para no depender del orden se mira CUAL de las dos partes es una practica
+    conocida; la otra es la sede. Si la duda persiste se asume "practica -
+    sede", que es lo que usan los informes vistos, y queda un aviso en el log.
+
+    Cuando la linea trae una sola parte, es la practica y la sede es la de por
+    defecto.
     """
+    avisos = []
+    sede_defecto = ajustes.get("sede_por_defecto", "HECAM")
+
     m = re.search(r"INSTITUCI[OÓ]N\s+USUARIA\s*:?\s*\n\s*(.+)", texto,
                   re.IGNORECASE)
     if not m:
-        return "", sede_defecto
+        return "", sede_defecto, avisos
+
     linea = limpiar(m.group(1))
-    partes = [p for p in re.split(r"\s+[-–—]\s+", linea) if p.strip()]
-    bruta = partes[0] if partes else linea
-    sede = limpiar(" ".join(partes[1:])) if len(partes) > 1 else sede_defecto
-    return practica_por_palabras(bruta, cfg) or bruta, sede
+    partes = [x.strip() for x in re.split(r"\s+[-–—]\s+", linea) if x.strip()]
+    if not partes:
+        return "", sede_defecto, avisos
+    if len(partes) == 1:
+        return practica_por_palabras(partes[0], cfg) or partes[0], sede_defecto, avisos
+
+    conocidas = {normalizar_clave(x)
+                 for x in (ajustes.get("sedes_conocidas") or [])}
+    conocidas.add(normalizar_clave(sede_defecto))
+
+    # 1) una parte es una sede que ya conocemos
+    idx_sede = next((i for i, x in enumerate(partes)
+                     if normalizar_clave(x) in conocidas), None)
+    if idx_sede is not None:
+        i_prac = 0 if idx_sede else 1
+        bruta, sede = partes[i_prac], partes[idx_sede]
+    else:
+        # 2) una sola parte se reconoce como practica: la otra es la sede
+        son_practica = [i for i, x in enumerate(partes)
+                        if practica_por_palabras(x, cfg)]
+        if len(son_practica) == 1:
+            i_prac = son_practica[0]
+            bruta = partes[i_prac]
+            sede = limpiar(" ".join(x for i, x in enumerate(partes)
+                                    if i != i_prac))
+        else:
+            # 3) ambiguo: se asume "practica - sede" y se avisa
+            bruta = partes[0]
+            sede = limpiar(" ".join(partes[1:]))
+            avisos.append(
+                "institucion usuaria %r: no se pudo decidir cual parte es la "
+                "practica y cual la sede; se tomo %r como practica y %r como "
+                "sede. Agregue la sede a iess.sedes_conocidas o la practica a "
+                "practica_por_palabra_clave para quitar la duda"
+                % (linea, bruta, sede))
+
+    return practica_por_palabras(bruta, cfg) or bruta, sede, avisos
 
 
 def _indices(encabezado):
@@ -200,12 +245,12 @@ def parsear(ruta_pdf: str, cfg: dict):
     archivo = os.path.basename(ruta_pdf)
 
     ajustes = cfg.get("iess") or {}
-    hospital = ajustes.get("hospital", "IESS")
-    sede_defecto = ajustes.get("sede_por_defecto", "HECAM")
+    hospital = ajustes.get("hospital", "HECAM")
 
     with pdfplumber.open(ruta_pdf) as pdf:
         texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
-        practica, sede = _institucion(texto, sede_defecto, cfg)
+        practica, sede, avisos_inst = _institucion(texto, ajustes, cfg)
+        avisos.extend("%s: %s" % (archivo, a) for a in avisos_inst)
         desde, hasta = _periodo(texto)
         magnitud_respaldo = _magnitud_por_tipo(texto)
 

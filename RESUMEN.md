@@ -36,6 +36,7 @@ Los dos formatos no se parecen en nada, y eso marcó el diseño:
 | Magnitudes | Las tres en el mismo informe | **Una por archivo**: cuerpo entero, cristalino y extremidades van en PDF separados |
 | Fechas | Por usuario | Del informe completo |
 | `NR` | No aplica | Significa *dosímetro no retornado* → `NE` en el CSV |
+| Práctica | Título de cada tabla (`Área: ...`) | Línea de institución, en cualquier orden: *práctica - sede* o *sede - práctica* |
 
 Por eso **varios PDF pueden alimentar un mismo CSV**: se agrupa por centro,
 sede y período, no por archivo.

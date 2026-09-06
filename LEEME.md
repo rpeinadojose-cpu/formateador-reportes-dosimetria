@@ -26,7 +26,8 @@ informes del IESS vienen repartidos en una carpeta por práctica, y para esos
 hay que pedirlo:
 
 ```bat
-consolidador_dosis.exe "C:uta\INFORMES_IESS" -r
+consolidador_dosis.exe "C:
+uta\INFORMES_IESS" -r
 ```
 
 o dejarlo fijo con `"buscar_en_subcarpetas": true` en `config.json`. El log dice
@@ -174,8 +175,20 @@ archivos.
 | Dato | De dónde sale |
 |---|---|
 | Período | `Lectura: Bimensual Período: 01/01/25 - 28/02/25`. Es del informe completo: todas las filas heredan las mismas fechas, el formato no las repite por usuario. |
-| Práctica y sede | La línea bajo `DATOS DE LA INSTITUCIÓN USUARIA`. `RADIODIAGNÓSTICO - GUAYAQUIL` → práctica *Radiodiagnóstico*, sede *GUAYAQUIL*. Si sólo trae la práctica, la sede es la de `iess.sede_por_defecto` (**HECAM**). |
-| Hospital | No aparece en el informe: se toma de `iess.hospital` (**IESS**). |
+| Práctica y sede | La línea bajo `DATOS DE LA INSTITUCIÓN USUARIA`. Si sólo trae la práctica, la sede es la de `iess.sede_por_defecto` (**HECAM**). |
+| Hospital | No aparece en el informe: se toma de `iess.hospital` (**HECAM**). |
+
+**El orden de esa línea no importa.** `RADIODIAGNÓSTICO - GUAYAQUIL` y
+`GUAYAQUIL - RADIODIAGNÓSTICO` dan el mismo resultado. Para decidirlo el
+programa mira, en este orden:
+
+1. si una de las partes está en `iess.sedes_conocidas`, esa es la sede;
+2. si no, cuál de las dos se reconoce como práctica (por las palabras clave):
+   la otra es la sede;
+3. si ninguna de las dos reglas resuelve, asume *práctica - sede* y **lo anota
+   como incidencia en el log**, indicando qué tomó como cada cosa.
+
+Cuando aparezca una sede nueva conviene agregarla a `iess.sedes_conocidas`.
 
 Las notas significan otra cosa que en DOSICONTROL:
 
