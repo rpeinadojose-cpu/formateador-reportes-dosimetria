@@ -16,6 +16,16 @@ python -m PyInstaller --noconfirm --clean --onefile --console ^
     --hidden-import laboratorios ^
     --hidden-import laboratorios.base ^
     --hidden-import laboratorios.dosicontrol ^
+    --hidden-import laboratorios.iess ^
+    --hidden-import laboratorios.dosisrad ^
+    --hidden-import laboratorios.logo ^
+    --exclude-module matplotlib ^
+    --exclude-module scipy ^
+    --exclude-module pandas ^
+    --exclude-module numpy ^
+    --exclude-module PIL ^
+    --exclude-module tkinter ^
+    --exclude-module IPython ^
     consolidador_dosis.py || goto :error
 
 echo.

@@ -452,7 +452,8 @@ def procesar(destino, salida, cfg, log):
 
     incidencias = []
     generados = []
-    total = 0
+    total = 0            # filas escritas: una por usuario y periodo
+    personas = set()     # (centro, cedula): cuenta a cada persona una sola vez
     # Un CSV por (centro, sede, periodo). Varios PDF pueden alimentar el mismo:
     # el IESS emite un archivo por magnitud (cuerpo entero, cristalino,
     # extremidades) para el mismo periodo, y los tres van al mismo CSV.
@@ -525,13 +526,14 @@ def procesar(destino, salida, cfg, log):
         regs = agrupar_por_usuario(regs, cfg, incidencias, origen)
         anexar_ciclo(regs, cfg)
         archivo = escribir_csv(regs, salida, cfg, log, grupo["parser"])
+        personas.update((r.hospital, r.cedula) for r in regs if r.cedula)
         if len(grupo["archivos"]) > 1:
             log("       a partir de %d informes: %s"
                 % (len(grupo["archivos"]), origen))
         generados.append(archivo)
         total += len(regs)
 
-    return generados, total, incidencias
+    return generados, total, incidencias, len(personas)
 
 
 # --------------------------------------------------------------------------
@@ -592,11 +594,14 @@ def main(argv=None):
         return _fin(1, lineas_log, salida, args.sin_pausa)
 
     os.makedirs(salida, exist_ok=True)
-    generados, total, incidencias = procesar(destino, salida, cfg, log)
+    generados, total, incidencias, personas = procesar(destino, salida, cfg, log)
 
     log("")
     log("=" * 74)
-    log("CSV generados: %d    Usuarios totales: %d" % (len(set(generados)), total))
+    # "filas" cuenta cada usuario una vez POR PERIODO; "personas" lo cuenta
+    # una sola vez aunque aparezca en varios informes.
+    log("CSV generados: %d    Filas escritas: %d    Personas distintas: %d"
+        % (len(set(generados)), total, personas))
 
     if incidencias:
         log("")

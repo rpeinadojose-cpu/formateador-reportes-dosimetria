@@ -154,6 +154,12 @@ Para agregar un laboratorio: copiar `dosicontrol.py`, adaptar `NOMBRE`,
   214 usuarios), sin incidencias.
 - Los tres laboratorios del país quedaron cubiertos.
 
+Los CSV se verificaron contra los PDF con un comprobador **independiente**,
+que relee los informes por otro camino y no reutiliza los parsers: cobertura
+de cédulas, respaldo de cada dosis en el texto del PDF, y —para los dos
+formatos con tabla con bordes— las 521 celdas recalculadas leyendo las
+columnas por posición, comparando por período. Todo cuadró.
+
 ## Presentación
 
 Al abrir, el programa dibuja el logotipo de **FISIQA** con el lema
