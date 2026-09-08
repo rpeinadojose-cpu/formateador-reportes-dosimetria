@@ -159,8 +159,12 @@ relee por un camino distinto del que usó el parser y se compara. Detecta que
 la dosis salió de la columna correcta, que es el riesgo real en los formatos
 con tabla, donde el Hp(10) del período convive con el acumulado anual.
 
-Probado saboteando el parser a propósito para que leyera la columna del
-acumulado anual: lo detectó en 149 de 149 filas donde ambos valores difieren.
+Los tres laboratorios tienen segunda lectura. En IESS y DOSISRAD se releen las
+columnas por posición; en DOSICONTROL, cuya tabla no tiene bordes, se usa
+**pypdf**, otra librería y otro algoritmo de extracción.
+
+Probado saboteando cada parser a propósito para que leyera la columna del
+acumulado anual: lo detectó en todos los casos donde ambos valores difieren.
 En el primer período del año no lo detecta, y no puede: ahí el acumulado anual
 es idéntico al del período.
 

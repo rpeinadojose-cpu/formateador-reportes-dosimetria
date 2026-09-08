@@ -214,7 +214,7 @@ def _convertir(bruto, magnitud, nota):
 
 
 # ------------------------------------------------------------ verificacion
-def celdas_por_posicion(ruta_pdf, cfg):
+def celdas_independientes(ruta_pdf, cfg):
     """
     Relectura independiente para verificar: toma las columnas por POSICION
     (0=serie, 2=cedula, 8=tipo, 9/10/11=Hp del periodo) en vez de ubicarlas por
@@ -223,7 +223,8 @@ def celdas_por_posicion(ruta_pdf, cfg):
     Importa sobre todo distinguir el primer bloque de tres columnas, que es la
     DOSIS DEL PERIODO, de las acumuladas anual y total que vienen despues.
 
-    Devuelve {(cedula, serie): (magnitud, valor_crudo)}.
+    Devuelve {(cedula, desde, hasta): [(hp10, hp3, hp007), ...]}, una terna
+    por fila del informe.
     """
     salida = {}
     with pdfplumber.open(ruta_pdf) as pdf:
@@ -236,16 +237,14 @@ def celdas_por_posicion(ruta_pdf, cfg):
                     cedula = _celda(fila[2])
                     if not RE_SERIE.match(serie) or not cedula:
                         continue
-                    magnitud = crudo = None
-                    for mag, i in (("hp10", 9), ("hp007", 10), ("hp3", 11)):
-                        if _celda(fila[i]):
-                            magnitud, crudo = mag, _celda(fila[i])
-                            break
-                    if magnitud is None:
-                        magnitud = MAGNITUD_POR_TIPO.get(_celda(fila[8]).upper())
-                        crudo = ""
-                    if magnitud:
-                        salida[(cedula, serie)] = (magnitud, crudo)
+                    desde = _fecha(_celda(fila[5]))
+                    hasta = _fecha(_celda(fila[6]))
+                    if not desde or not hasta:
+                        continue
+                    # el informe pone Hp(10), Hp(007) y Hp(3) en 9, 10 y 11;
+                    # la terna va en el orden Hp(10), Hp(3), Hp(0.07)
+                    terna = (_celda(fila[9]), _celda(fila[11]), _celda(fila[10]))
+                    salida.setdefault((cedula, desde, hasta), []).append(terna)
     return salida
 
 

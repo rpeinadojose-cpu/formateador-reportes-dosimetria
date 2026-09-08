@@ -264,6 +264,51 @@ def _cliente(lineas):
     return fus[0], (fus[-1] if len(fus) > 1 else fus[0])
 
 
+# ------------------------------------------------------------ verificacion
+# La tabla de DOSICONTROL no tiene bordes, asi que el parser la reconstruye
+# por coordenadas. Para verificar hace falta un camino ajeno a ese: se usa
+# pypdf, que es otra libreria y otro algoritmo de extraccion, y saca las filas
+# como texto plano ya ordenado.
+RE_FILA_TEXTO = re.compile(
+    r"(\d{8,13})\s+(\d{1,4})\s+(\d{4}/\d{2}/\d{2})\s+(\d{4}/\d{2}/\d{2})\s+(.*)$")
+
+
+def celdas_independientes(ruta_pdf, cfg):
+    """
+    Relee el informe con pypdf y devuelve, por usuario y periodo, la terna de
+    dosis DEL PERIODO de cada una de sus filas:
+
+        {(cedula, desde, hasta): [(hp10, hp3, hp007), ...]}
+
+    En el texto plano, tras las dos fechas vienen los nueve valores en orden:
+    DOSIS DEL PERIODO, ACUMULADA ANUAL y ACUMULADA ANUAL con niveles de
+    registro. Solo interesan los tres primeros, en el orden Hp(10), Hp(3),
+    Hp(0.07) que usa el informe.
+    """
+    import pypdf
+
+    salida = {}
+    lector = pypdf.PdfReader(ruta_pdf)
+    for pagina in lector.pages:
+        for linea in (pagina.extract_text() or "").splitlines():
+            m = RE_FILA_TEXTO.search(linea.strip())
+            if not m:
+                continue
+            cedula, _dias, desde, hasta, resto = m.groups()
+            valores = []
+            for tok in resto.split():
+                if RE_NUM.match(tok) or RE_GUION.match(tok):
+                    valores.append(tok)
+                elif RE_NOTA.match(tok):
+                    continue          # las notas no ocupan columna
+                else:
+                    break             # texto inesperado: se corta la fila
+            terna = tuple(valores[i] if i < len(valores) else ""
+                          for i in range(3))
+            salida.setdefault((cedula, desde, hasta), []).append(terna)
+    return salida
+
+
 # ---------------------------------------------------------------- parser
 def parsear(ruta_pdf: str, cfg: dict):
     registros = []

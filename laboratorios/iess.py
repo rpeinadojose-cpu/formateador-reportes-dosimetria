@@ -239,19 +239,22 @@ def _convertir(bruto, magnitud):
 
 
 # ------------------------------------------------------------ verificacion
-def celdas_por_posicion(ruta_pdf, cfg):
+def celdas_independientes(ruta_pdf, cfg):
     """
     Relectura independiente para verificar: toma las columnas por POSICION
-    (2=cedula, 3=codigo del dosimetro, 4=dosis del periodo) en vez de ubicarlas
-    por el texto del encabezado, y saca la magnitud de la linea "Tipo:" en vez
-    del "Hp(x)" del encabezado de tabla.
+    (2=cedula, 4=dosis del periodo) en vez de ubicarlas por el texto del
+    encabezado, y saca la magnitud de la linea "Tipo:" en vez del "Hp(x)" del
+    encabezado de tabla.
 
-    Devuelve {(cedula, serie): (magnitud, valor_crudo)}.
+    Devuelve {(cedula, desde, hasta): [(hp10, hp3, hp007), ...]}. Cada archivo
+    trae una sola magnitud, asi que las otras dos van vacias.
     """
     salida = {}
     with pdfplumber.open(ruta_pdf) as pdf:
-        magnitud = _magnitud_por_tipo(pdf.pages[0].extract_text() or "")
-        if magnitud is None:
+        texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
+        magnitud = _magnitud_por_tipo(texto)
+        desde, hasta = _periodo(texto)
+        if magnitud is None or not desde:
             return salida
         for pagina in pdf.pages:
             for tabla in pagina.extract_tables():
@@ -264,7 +267,10 @@ def celdas_por_posicion(ruta_pdf, cfg):
                         continue
                     if not any(c.isdigit() for c in cedula) or not serie:
                         continue
-                    salida[(cedula, serie)] = (magnitud, _celda(fila[4]))
+                    orden = ("hp10", "hp3", "hp007")
+                    terna = tuple(_celda(fila[4]) if m == magnitud else ""
+                                  for m in orden)
+                    salida.setdefault((cedula, desde, hasta), []).append(terna)
     return salida
 
 

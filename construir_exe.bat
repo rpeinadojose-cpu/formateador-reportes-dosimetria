@@ -13,9 +13,11 @@ python -m PyInstaller --noconfirm --clean --onefile --console ^
     --collect-all pdfminer ^
     --collect-all pypdfium2 ^
     --collect-all pypdfium2_raw ^
+    --collect-all pypdf ^
     --hidden-import laboratorios ^
     --hidden-import laboratorios.base ^
     --hidden-import laboratorios.dosicontrol ^
+    --hidden-import laboratorios.verificacion ^
     --hidden-import laboratorios.iess ^
     --hidden-import laboratorios.dosisrad ^
     --hidden-import laboratorios.logo ^

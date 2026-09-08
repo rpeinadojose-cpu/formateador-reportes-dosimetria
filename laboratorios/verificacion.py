@@ -4,30 +4,40 @@ Verificacion automatica de lo extraido, contra el propio PDF.
 
 Se ejecuta siempre, despues de leer cada informe y ANTES de fusionar los
 dosimetros de un usuario, porque en ese momento cada registro corresponde
-uno a uno con una fila del PDF.
+uno a uno con una fila del informe.
 
 Dos comprobaciones:
 
   1. RESPALDO EN EL TEXTO (todos los laboratorios)
      Cada dosis numerica extraida tiene que aparecer literalmente en el texto
-     del PDF. Detecta valores inventados o mal formateados.
+     del PDF.
 
-  2. CELDA A CELDA (solo los formatos con tabla con bordes)
-     Se relee la tabla tomando las columnas POR POSICION, mientras que los
-     parsers las ubican por el texto del encabezado. Son dos caminos
-     distintos: si coinciden, la columna de la que se tomo cada dosis es la
-     correcta. Es el riesgo real de estos formatos, donde una tabla trae
-     Hp(10), Hp(0.07) y Hp(3) del periodo junto a las acumuladas anual y
-     total, que NO deben usarse.
+  2. SEGUNDA LECTURA (todos los laboratorios)
+     El informe se relee por un camino ajeno al que uso el parser y se
+     comparan las dosis DEL PERIODO fila por fila:
 
-Lo que NO se puede comprobar asi es el formato de DOSICONTROL: su tabla no
-tiene bordes y se reconstruye por coordenadas, sin un segundo camino
-independiente. Ahi queda el respaldo en texto mas el control de numeracion
-de filas que hace el propio parser.
+       - DOSICONTROL reconstruye su tabla por coordenadas, porque no tiene
+         bordes; la segunda lectura usa pypdf, otra libreria y otro algoritmo,
+         que devuelve las filas como texto plano.
+       - IESS y DOSISRAD ubican las columnas por el texto del encabezado; la
+         segunda lectura las toma por POSICION.
 
-Un parser ofrece la segunda comprobacion definiendo:
+     Lo que se protege es de que la dosis salga de la columna equivocada: los
+     tres formatos ponen la dosis del periodo al lado de las acumuladas anual
+     y total, que NO deben usarse.
 
-    celdas_por_posicion(ruta_pdf, cfg) -> {(cedula, serie): (magnitud, crudo)}
+La comparacion es por FILA COMPLETA, es decir la terna (Hp(10), Hp(3),
+Hp(0.07)), agrupando por (cedula, desde, hasta). Se compara como multiconjunto
+porque una persona puede llevar varios dosimetros en el mismo periodo y el
+orden de las filas no tiene por que coincidir entre las dos lecturas.
+
+Un parser ofrece la segunda lectura definiendo:
+
+    celdas_independientes(ruta_pdf, cfg)
+        -> {(cedula, desde, hasta): [ (hp10, hp3, hp007), ... ]}
+
+donde cada terna son los valores CRUDOS de una fila; lo que no sea un numero
+se ignora al comparar.
 """
 from __future__ import annotations
 
@@ -35,9 +45,17 @@ import re
 
 import pdfplumber
 
-from .base import limpiar, normalizar_clave
+from .base import limpiar
 
 RE_NUM = re.compile(r"^\d+(?:[.,]\d+)?$")
+
+
+def _numero(crudo):
+    """Deja solo el numero de una celda; '--', notas y vacios dan ''."""
+    for tok in limpiar(crudo or "").split():
+        if RE_NUM.match(tok):
+            return tok.replace(",", ".")
+    return ""
 
 
 def _texto(ruta_pdf):
@@ -47,11 +65,7 @@ def _texto(ruta_pdf):
 
 
 def comprobar(parser, ruta_pdf, registros, cfg, etiqueta):
-    """
-    Devuelve (resumen, problemas).
-
-    'resumen' es una linea para el log; 'problemas' son incidencias.
-    """
+    """Devuelve (resumen_para_el_log, incidencias)."""
     problemas = []
     if not registros:
         return "", problemas
@@ -61,9 +75,8 @@ def comprobar(parser, ruta_pdf, registros, cfg, etiqueta):
     numericas = sin_respaldo = 0
     for r in registros:
         for mag in ("hp10", "hp007", "hp3"):
-            crudo = limpiar(getattr(r, mag + "_crudo", "") or "")
-            valor = crudo.split()[0] if crudo else ""
-            if not RE_NUM.match(valor):
+            valor = _numero(getattr(r, mag + "_crudo", ""))
+            if not valor:
                 continue
             numericas += 1
             if valor not in texto:
@@ -77,64 +90,55 @@ def comprobar(parser, ruta_pdf, registros, cfg, etiqueta):
     if sin_respaldo:
         partes[0] += " de %d" % numericas
 
-    # ---------- 2) celda a celda ----------
-    por_posicion = getattr(parser, "celdas_por_posicion", None)
-    if por_posicion is None:
-        partes.append("relectura por posicion: no aplica a este formato")
+    # ---------- 2) segunda lectura ----------
+    segunda = getattr(parser, "celdas_independientes", None)
+    if segunda is None:
+        partes.append("segunda lectura: no disponible para este formato")
         return "; ".join(partes), problemas
 
     try:
-        esperado = por_posicion(ruta_pdf, cfg)
+        esperado = segunda(ruta_pdf, cfg)
     except Exception as exc:
-        problemas.append("%s: la relectura de verificacion fallo -> %s"
-                         % (etiqueta, exc))
+        problemas.append("%s: la segunda lectura fallo -> %s" % (etiqueta, exc))
         return "; ".join(partes), problemas
 
-    comprobadas = discrepantes = 0
+    # lo extraido, agrupado igual que la segunda lectura
+    real = {}
     for r in registros:
-        clave = (r.cedula, r.serie_dosimetro)
+        clave = (r.cedula, r.fecha_inicio, r.fecha_fin)
+        terna = (_numero(r.hp10_crudo), _numero(r.hp3_crudo),
+                 _numero(r.hp007_crudo))
+        real.setdefault(clave, []).append(terna)
+
+    filas = discrepantes = 0
+    for clave, ternas in real.items():
         if clave not in esperado:
             continue
-        mag_esp, crudo_esp = esperado[clave]
-        comprobadas += 1
-
-        # Se compara el NUMERO de la celda. Cuando la fila no trae lectura
-        # (nota DNE, NC y similares) el parser deja el codigo de la nota como
-        # marca interna, asi que en ese caso basta con que haya asignado la
-        # misma magnitud, que es lo que se quiere comprobar.
-        real_crudo = limpiar(getattr(r, mag_esp + "_crudo", "") or "")
-        real = next((t for t in real_crudo.split() if RE_NUM.match(t)), "")
-        esp = next((t for t in limpiar(crudo_esp).split() if RE_NUM.match(t)), "")
-
-        if esp:
-            malo = real.replace(",", ".") != esp.replace(",", ".")
-            detalle = "el informe dice %s y se extrajo %s" % (esp, real or "nada")
-        else:
-            malo = not real_crudo          # la magnitud no quedo asignada
-            detalle = ("la fila no trae lectura y la magnitud %s quedo sin "
-                       "asignar" % mag_esp.upper())
-
-        if malo:
+        filas += len(ternas)
+        esp = sorted(tuple(_numero(v) for v in t) for t in esperado[clave])
+        obt = sorted(ternas)
+        if esp != obt:
             discrepantes += 1
             if len(problemas) < 12:
                 problemas.append(
-                    "%s: cedula %s dosimetro %s, columna %s -> %s"
-                    % (etiqueta, r.cedula, r.serie_dosimetro,
-                       mag_esp.upper(), detalle))
+                    "%s: cedula %s (%s a %s) -> el informe dice %s y se "
+                    "extrajo %s, en Hp(10)/Hp(3)/Hp(0.07)"
+                    % (etiqueta, clave[0], clave[1], clave[2], esp, obt))
 
-    if comprobadas:
-        partes.append("%d celda(s) releidas por posicion%s"
-                      % (comprobadas,
-                         "" if not discrepantes else ", %d NO coinciden" % discrepantes))
-        faltan = len(registros) - comprobadas
-        if faltan > 0:
-            partes.append("%d fila(s) sin contraparte en la relectura" % faltan)
-            problemas.append(
-                "%s: %d fila(s) extraidas no se encontraron al releer la tabla "
-                "por posicion" % (etiqueta, faltan))
+    sin_contraparte = len(real) - sum(
+        1 for c in real if c in esperado)
+    if sin_contraparte:
+        problemas.append(
+            "%s: %d usuario(s) que se extrajeron no aparecen en la segunda "
+            "lectura" % (etiqueta, sin_contraparte))
+
+    if filas:
+        partes.append("%d fila(s) contrastadas con una segunda lectura%s"
+                      % (filas, "" if not discrepantes
+                         else ", %d NO coinciden" % discrepantes))
     else:
-        partes.append("la relectura por posicion no devolvio filas")
-        problemas.append("%s: la verificacion por posicion no pudo releer "
-                         "ninguna fila" % etiqueta)
+        partes.append("la segunda lectura no devolvio filas")
+        problemas.append("%s: la segunda lectura no pudo leer ninguna fila"
+                         % etiqueta)
 
     return "; ".join(partes), problemas

@@ -326,36 +326,41 @@ que usó el parser y comparando. El resultado sale en el log por archivo:
       verificacion: 41 dosis con respaldo en el texto; 41 celda(s) releidas por posicion
 ```
 
-Dos comprobaciones:
+Dos comprobaciones, en los tres laboratorios:
 
-* **Respaldo en el texto** (los tres laboratorios). Cada dosis numérica
-  extraída tiene que aparecer literalmente en el texto del PDF.
-* **Celda a celda** (IESS y DOSISRAD, que traen tabla con bordes). Se relee la
-  tabla tomando las columnas **por posición**, mientras el parser las ubica por
-  el texto del encabezado. Si los dos caminos coinciden, la dosis salió de la
-  columna correcta. Es el riesgo real de estos formatos, donde el Hp(10) del
-  período convive con el acumulado anual y el total, que **no** deben usarse.
+* **Respaldo en el texto.** Cada dosis numérica extraída tiene que aparecer
+  literalmente en el texto del PDF.
+* **Segunda lectura.** El informe se relee por un camino ajeno al del parser y
+  se comparan las dosis del período **fila por fila**, como la terna
+  Hp(10)/Hp(3)/Hp(0.07):
 
-Cualquier diferencia sale como incidencia, con cédula, dosímetro, columna y
-los dos valores:
+  | Laboratorio | Cómo lee el parser | Cómo relee la verificación |
+  |---|---|---|
+  | DOSICONTROL | Reconstruye la tabla por coordenadas (no tiene bordes) | Con **pypdf**, otra librería y otro algoritmo, que devuelve las filas como texto plano |
+  | IESS | Ubica las columnas por el texto del encabezado | Las toma **por posición** |
+  | DOSISRAD | Ubica las columnas por el texto del encabezado | Las toma **por posición** |
+
+Lo que se protege es de que la dosis salga de la columna equivocada: los tres
+formatos ponen la dosis del período al lado de las acumuladas anual y total,
+que **no** deben usarse.
+
+La comparación agrupa por (cédula, desde, hasta) y compara las filas como
+conjunto, porque una persona puede llevar varios dosímetros en el mismo período
+y el orden no tiene por qué coincidir entre las dos lecturas. Cualquier
+diferencia sale como incidencia con los dos valores:
 
 ```
-dosis-4.pdf: cedula 1310153166 dosimetro DA1206024, columna HP10
-             -> el informe dice 0.16 y se extrajo 0.55
+Bosque_ciclo_3.pdf: cedula 1721983078 (2023/11/18 a 2024/03/17)
+   -> el informe dice [('0.402','','')] y se extrajo [('0.628','','')],
+      en Hp(10)/Hp(3)/Hp(0.07)
 ```
 
 **Lo que la verificación no cubre**, para que no dé una falsa sensación de
-seguridad:
+seguridad: en el **primer período del año** la dosis acumulada anual es
+idéntica a la del período. Si se leyera la columna equivocada, el número sería
+el mismo y ninguna verificación podría notarlo.
 
-* El formato de **DOSICONTROL** no admite la comprobación celda a celda: su
-  tabla no tiene bordes y se reconstruye por coordenadas, sin un segundo camino
-  independiente. Ahí quedan el respaldo en texto y el control de numeración de
-  filas 1..N por sección.
-* En el **primer período del año** la dosis acumulada anual es idéntica a la
-  del período. Si se leyera la columna equivocada, el número sería el mismo y
-  ninguna verificación podría notarlo.
-
-Cuesta entre 40 y 120 segundos por carpeta, porque cada PDF se lee dos veces.
+Cuesta entre 25 y 115 segundos por carpeta, porque cada PDF se lee dos veces.
 Se apaga con `"verificar": false` en `config.json`.
 
 ## El log (`lector_dosis.log`)

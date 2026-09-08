@@ -52,7 +52,7 @@ from laboratorios.base import (
     CAMPOS_SALIDA, nombre_archivo_seguro, limpiar, normalizar_clave,
 )
 
-VERSION = "3.4.0"
+VERSION = "3.5.0"
 
 # --------------------------------------------------------------------------
 # Configuracion por defecto
