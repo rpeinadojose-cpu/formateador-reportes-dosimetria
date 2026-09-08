@@ -238,6 +238,36 @@ def _convertir(bruto, magnitud):
     return m.group(1).replace(",", "."), ""
 
 
+# ------------------------------------------------------------ verificacion
+def celdas_por_posicion(ruta_pdf, cfg):
+    """
+    Relectura independiente para verificar: toma las columnas por POSICION
+    (2=cedula, 3=codigo del dosimetro, 4=dosis del periodo) en vez de ubicarlas
+    por el texto del encabezado, y saca la magnitud de la linea "Tipo:" en vez
+    del "Hp(x)" del encabezado de tabla.
+
+    Devuelve {(cedula, serie): (magnitud, valor_crudo)}.
+    """
+    salida = {}
+    with pdfplumber.open(ruta_pdf) as pdf:
+        magnitud = _magnitud_por_tipo(pdf.pages[0].extract_text() or "")
+        if magnitud is None:
+            return salida
+        for pagina in pdf.pages:
+            for tabla in pagina.extract_tables():
+                for fila in tabla:
+                    if len(fila) < 5:
+                        continue
+                    cedula = _celda(fila[2])
+                    serie = _celda(fila[3])
+                    if not re.fullmatch(r"[0-9A-Za-z\-]{6,15}", cedula or ""):
+                        continue
+                    if not any(c.isdigit() for c in cedula) or not serie:
+                        continue
+                    salida[(cedula, serie)] = (magnitud, _celda(fila[4]))
+    return salida
+
+
 # ---------------------------------------------------------------- parser
 def parsear(ruta_pdf: str, cfg: dict):
     registros = []

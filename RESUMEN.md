@@ -154,11 +154,15 @@ Para agregar un laboratorio: copiar `dosicontrol.py`, adaptar `NOMBRE`,
   214 usuarios), sin incidencias.
 - Los tres laboratorios del país quedaron cubiertos.
 
-Los CSV se verificaron contra los PDF con un comprobador **independiente**,
-que relee los informes por otro camino y no reutiliza los parsers: cobertura
-de cédulas, respaldo de cada dosis en el texto del PDF, y —para los dos
-formatos con tabla con bordes— las 521 celdas recalculadas leyendo las
-columnas por posición, comparando por período. Todo cuadró.
+La verificación quedó **dentro del programa** y corre siempre: cada informe se
+relee por un camino distinto del que usó el parser y se compara. Detecta que
+la dosis salió de la columna correcta, que es el riesgo real en los formatos
+con tabla, donde el Hp(10) del período convive con el acumulado anual.
+
+Probado saboteando el parser a propósito para que leyera la columna del
+acumulado anual: lo detectó en 149 de 149 filas donde ambos valores difieren.
+En el primer período del año no lo detecta, y no puede: ahí el acumulado anual
+es idéntico al del período.
 
 ## Presentación
 

@@ -157,7 +157,8 @@ Se crea solo la primera vez que se ejecuta, junto al `.exe`. Claves útiles:
 | `tratar_guiones_como` | Qué poner cuando el usuario no tiene dosímetro que mida esa magnitud. `""` (actual: celda en blanco), `"NR"` o `"NE"`. |
 | `notas_a_ne` | Notas que se convierten en `NE`. Hoy `["NC"]`; puede agregar `"DP"`, `"NU"`, `"DOP"`. |
 | `nota_aplica_a_toda_la_fila` | Sólo aplica con `una_fila_por_usuario: false`. Al fusionar, cada magnitud toma su valor del dosímetro que la mide. |
-| `buscar_en_subcarpetas` | Entrar en las subcarpetas de la carpeta de reportes. `true` por defecto. |
+| `buscar_en_subcarpetas` | Entrar en las subcarpetas de la carpeta de reportes. `false` por defecto. |
+| `verificar` | Verificar cada informe releyéndolo por otro camino. `true` por defecto. |
 | `sede_por_defecto` | Sede a usar cuando el informe no la trae entre paréntesis. |
 | `iess.hospital` / `iess.sede_por_defecto` | Centro y sede de los informes del IESS, que no los nombran. |
 | `dosisrad.centros` | Fija centro y sede por `Código Nro`, porque el encabezado recorta el nombre. |
@@ -315,6 +316,47 @@ escribir; si no lo consigue, cae solo a blanco y negro.
 **El logotipo se dibuja sólo en pantalla.** El archivo `lector_dosis.log`
 conserva el encabezado corto de texto, para no llenarse de arte en cada
 corrida.
+
+## Verificación automática
+
+Cada informe se verifica **siempre**, releyéndolo por un camino distinto del
+que usó el parser y comparando. El resultado sale en el log por archivo:
+
+```
+      verificacion: 41 dosis con respaldo en el texto; 41 celda(s) releidas por posicion
+```
+
+Dos comprobaciones:
+
+* **Respaldo en el texto** (los tres laboratorios). Cada dosis numérica
+  extraída tiene que aparecer literalmente en el texto del PDF.
+* **Celda a celda** (IESS y DOSISRAD, que traen tabla con bordes). Se relee la
+  tabla tomando las columnas **por posición**, mientras el parser las ubica por
+  el texto del encabezado. Si los dos caminos coinciden, la dosis salió de la
+  columna correcta. Es el riesgo real de estos formatos, donde el Hp(10) del
+  período convive con el acumulado anual y el total, que **no** deben usarse.
+
+Cualquier diferencia sale como incidencia, con cédula, dosímetro, columna y
+los dos valores:
+
+```
+dosis-4.pdf: cedula 1310153166 dosimetro DA1206024, columna HP10
+             -> el informe dice 0.16 y se extrajo 0.55
+```
+
+**Lo que la verificación no cubre**, para que no dé una falsa sensación de
+seguridad:
+
+* El formato de **DOSICONTROL** no admite la comprobación celda a celda: su
+  tabla no tiene bordes y se reconstruye por coordenadas, sin un segundo camino
+  independiente. Ahí quedan el respaldo en texto y el control de numeración de
+  filas 1..N por sección.
+* En el **primer período del año** la dosis acumulada anual es idéntica a la
+  del período. Si se leyera la columna equivocada, el número sería el mismo y
+  ninguna verificación podría notarlo.
+
+Cuesta entre 40 y 120 segundos por carpeta, porque cada PDF se lee dos veces.
+Se apaga con `"verificar": false` en `config.json`.
 
 ## El log (`lector_dosis.log`)
 

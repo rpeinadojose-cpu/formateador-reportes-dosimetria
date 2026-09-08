@@ -47,12 +47,12 @@ from datetime import datetime
 import pdfplumber
 
 import laboratorios
-from laboratorios import logo
+from laboratorios import logo, verificacion
 from laboratorios.base import (
     CAMPOS_SALIDA, nombre_archivo_seguro, limpiar, normalizar_clave,
 )
 
-VERSION = "3.3.0"
+VERSION = "3.4.0"
 
 # --------------------------------------------------------------------------
 # Configuracion por defecto
@@ -76,6 +76,10 @@ CONFIG_DEFECTO = {
     # informes del IESS vienen repartidos en una carpeta por practica; para
     # esos, actívelo aqui o pase --subcarpetas en la linea de comandos.
     "buscar_en_subcarpetas": False,
+    # Verificar cada informe releyendolo por otro camino y comparando con lo
+    # extraido. Suma unos segundos por archivo. Desactivarlo solo si hace
+    # falta ganar tiempo en una carpeta muy grande.
+    "verificar": True,
     "separador_csv": ";",
     "codificacion_csv": "utf-8-sig",
 
@@ -497,6 +501,21 @@ def procesar(destino, salida, cfg, log):
                     "%s: no se extrajo ninguna fila del informe" % nombre)
                 log("      SIN FILAS")
                 continue
+
+            # Verificacion: se hace ANTES de fusionar los dosimetros, cuando
+            # cada registro todavia equivale a una fila del PDF.
+            if cfg.get("verificar", True):
+                try:
+                    resumen_v, problemas = verificacion.comprobar(
+                        parser, ruta, registros, cfg, nombre)
+                    if resumen_v:
+                        log("      verificacion: %s" % resumen_v)
+                    incidencias.extend(problemas)
+                except Exception as exc:
+                    incidencias.append(
+                        "%s: la verificacion no se pudo completar -> %s"
+                        % (nombre, exc))
+                    log("      verificacion: fallo (%s)" % exc)
 
             for r in registros:
                 grupo = acumulado.setdefault(

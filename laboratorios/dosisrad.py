@@ -213,6 +213,42 @@ def _convertir(bruto, magnitud, nota):
     return m.group(1).replace(",", "."), n
 
 
+# ------------------------------------------------------------ verificacion
+def celdas_por_posicion(ruta_pdf, cfg):
+    """
+    Relectura independiente para verificar: toma las columnas por POSICION
+    (0=serie, 2=cedula, 8=tipo, 9/10/11=Hp del periodo) en vez de ubicarlas por
+    el texto del encabezado.
+
+    Importa sobre todo distinguir el primer bloque de tres columnas, que es la
+    DOSIS DEL PERIODO, de las acumuladas anual y total que vienen despues.
+
+    Devuelve {(cedula, serie): (magnitud, valor_crudo)}.
+    """
+    salida = {}
+    with pdfplumber.open(ruta_pdf) as pdf:
+        for pagina in pdf.pages:
+            for tabla in pagina.extract_tables():
+                for fila in tabla:
+                    if len(fila) < 13:
+                        continue
+                    serie = _celda(fila[0]).upper()
+                    cedula = _celda(fila[2])
+                    if not RE_SERIE.match(serie) or not cedula:
+                        continue
+                    magnitud = crudo = None
+                    for mag, i in (("hp10", 9), ("hp007", 10), ("hp3", 11)):
+                        if _celda(fila[i]):
+                            magnitud, crudo = mag, _celda(fila[i])
+                            break
+                    if magnitud is None:
+                        magnitud = MAGNITUD_POR_TIPO.get(_celda(fila[8]).upper())
+                        crudo = ""
+                    if magnitud:
+                        salida[(cedula, serie)] = (magnitud, crudo)
+    return salida
+
+
 # ---------------------------------------------------------------- parser
 def parsear(ruta_pdf: str, cfg: dict):
     registros = []
