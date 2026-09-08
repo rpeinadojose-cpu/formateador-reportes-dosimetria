@@ -1,8 +1,8 @@
 # Lector de informes de dosis (POE) → CSV
 
 Convierte los informes PDF de dosimetría personal en un CSV por centro, sede y
-período. Reconoce los formatos de **DOSICONTROL S.A.S.** y del **laboratorio
-del IESS**.
+período. Reconoce los formatos de **DOSICONTROL S.A.S.**, del **laboratorio del
+IESS** y de **DOSISRAD S.A.**
 
 ---
 
@@ -54,11 +54,21 @@ Ejemplo: `HOSPITAL_DE_LOS_VALLES_CUMBAYA_2024-03-18_2024-05-17.csv`
 Las fechas son las del período del informe (`Lectura Desde` / `Lectura Hasta`).
 Identifican el informe sin depender de que el laboratorio numere ciclos.
 
-**Varios PDF pueden alimentar un mismo CSV.** El IESS emite un archivo por
-magnitud —cuerpo entero (Hp(10)), cristalino (Hp(3)) y extremidades
-(Hp(0,07))— para el mismo período: los tres se juntan en un solo CSV y las tres
-lecturas de una persona quedan en su fila. El log dice de qué informes salió
-cada archivo.
+**Varios PDF pueden alimentar un mismo CSV**, porque se agrupa por centro, sede
+y período, no por archivo:
+
+* el **IESS** emite un archivo por magnitud —cuerpo entero (Hp(10)), cristalino
+  (Hp(3)) y extremidades (Hp(0,07))— para el mismo período;
+* **DOSISRAD** emite un archivo por departamento, todos del mismo bimestre.
+
+En ambos casos los archivos del mismo período se juntan en un solo CSV, y las
+lecturas de una misma persona quedan en su fila. El log dice de qué informes
+salió cada archivo:
+
+```
+    -> SOLCA_MANABI_PORTOVIEJO_2026-04-12_2026-06-11.csv     105 usuarios
+       a partir de 3 informes: dosis-4.pdf, dosis-5.pdf, dosis-6.pdf
+```
 
 > La sede va en el nombre porque, sin ella, `Bosque_ciclo_1.pdf` y
 > `Cumbaya_ciclo_1.pdf` producirían el mismo archivo y uno sobrescribiría al
@@ -150,6 +160,8 @@ Se crea solo la primera vez que se ejecuta, junto al `.exe`. Claves útiles:
 | `buscar_en_subcarpetas` | Entrar en las subcarpetas de la carpeta de reportes. `true` por defecto. |
 | `sede_por_defecto` | Sede a usar cuando el informe no la trae entre paréntesis. |
 | `iess.hospital` / `iess.sede_por_defecto` | Centro y sede de los informes del IESS, que no los nombran. |
+| `dosisrad.centros` | Fija centro y sede por `Código Nro`, porque el encabezado recorta el nombre. |
+| `dosisrad.omitir_ambiental` | Omitir los dosímetros de área (`AMB`). `true` por defecto. |
 | `practica_por_palabra_clave` | Normaliza la práctica por palabras clave (prefijo de palabra, sin tildes). |
 | `mapa_practica` | Normaliza el título de tabla (`Área: ...`) que va en la columna `practica`. |
 | `texto_ciclo_en_observacion` | Texto del ciclo anexado a `observacion`. `"Ciclo {ciclo}"` por defecto; `""` para no anexarlo. |
@@ -222,9 +234,36 @@ reglas más específicas van primero.
 Se aplica sólo cuando `mapa_practica` (coincidencia exacta) no tiene entrada
 para ese texto, así que las prácticas de DOSICONTROL siguen mandando sobre ella.
 
+## Laboratorio DOSISRAD
+
+*Laboratorio de Dosimetría Personal — Dosimetría Termoluminiscente TLD*. Se
+reconoce por la palabra `DOSISRAD` del encabezado. Un informe por departamento,
+con las tres magnitudes en columnas separadas más una de notas.
+
+| Dato | De dónde sale |
+|---|---|
+| Período del informe | El **par de fechas Desde/Hasta más repetido** entre las filas. No el mínimo y el máximo: una sola lectura de dos períodos correría el inicio del informe entero. |
+| Fechas del usuario | Las de su propia fila, sin tocar, así quien tiene una lectura de 121 días conserva su ventana real. |
+| Centro y sede | `Nombre` hasta el guion, y `Ciudad` como sede. El encabezado **recorta el nombre** al ancho de su casilla (termina en `... DE MANABI - NUC`), así que la sede no se puede sacar de ahí. Con `dosisrad.centros` se fija por `Código Nro`. |
+| Práctica | `NOMBRE DEL DEPARTAMENTO`. |
+| Ciclo | La columna `Periodo` (número de medida del año), anexada a `observacion`. |
+
+Cada fila es un dosímetro y su tipo dice qué magnitud mide: `CE` cuerpo entero y
+`AMB` ambiental → Hp(10); `AL` anillo y `BR` brazalete → Hp(0,07); `CR`
+cristalino → Hp(3). Los ambientales se omiten (`omitir_ambiental`) porque miden
+un área, no a una persona.
+
+Nomenclatura de notas, tomada del pie del propio informe:
+
+| Nota | Significado | En el CSV |
+|---|---|---|
+| `DD` `DP` `DNU` `DNE` `UNL` | dañado, perdido, no utilizado, no entregado, dejó de laborar | `NE` |
+| `<LD` | menor al límite de detección | `NR` |
+| `DE2P` `DPI` `DMS` `PEM` | dos o más períodos, investigación, modificada SCAN, embarazo | conserva el valor, sólo se anota |
+
 ## Agregar otro laboratorio
 
-Faltan los formatos del tercer laboratorio del país:
+Los tres laboratorios del país ya están implementados. Para uno nuevo:
 
 1. Copie `laboratorios/iess.py` o `laboratorios/dosicontrol.py` a
    `laboratorios/<nuevo_lab>.py` y adapte `NOMBRE`, `detectar()`, `parsear()` y

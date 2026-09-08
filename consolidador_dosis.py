@@ -22,8 +22,8 @@ Reglas aplicadas a las dosis del periodo (Acuerdo Ministerial 245):
     se resume en UNA fila: cada magnitud se toma del dosimetro que la mide,
     aunque vengan en archivos distintos.
 
-Laboratorios reconocidos: DOSICONTROL S.A.S. (informe DC-008) y el laboratorio
-del IESS (Informe Dosimetria Personal Termoluminiscente).
+Laboratorios reconocidos: DOSICONTROL S.A.S. (informe DC-008), el laboratorio
+del IESS (Informe Dosimetria Personal Termoluminiscente) y DOSISRAD S.A.
 
 Uso:
     consolidador_dosis.exe                        -> carpeta del ejecutable
@@ -52,7 +52,7 @@ from laboratorios.base import (
     CAMPOS_SALIDA, nombre_archivo_seguro, limpiar, normalizar_clave,
 )
 
-VERSION = "3.2.0"
+VERSION = "3.3.0"
 
 # --------------------------------------------------------------------------
 # Configuracion por defecto
@@ -136,6 +136,21 @@ CONFIG_DEFECTO = {
         "sedes_conocidas": ["HECAM", "GUAYAQUIL", "QUITO", "CUENCA", "AMBATO",
                             "PORTOVIEJO", "MANTA", "MACHALA", "LOJA",
                             "IBARRA", "RIOBAMBA", "SANTO DOMINGO", "ESMERALDAS"]
+    },
+
+    # Ajustes propios de DOSISRAD. Su encabezado separa la sede del centro
+    # con un guion ("... - NUCLEO DE PORTOVIEJO"); si no lo trae, la sede es
+    # la ciudad. Los dosimetros ambientales (AMB) no son personal expuesto.
+    "dosisrad": {
+        "sede_por_defecto": "MATRIZ",
+        "omitir_ambiental": True,
+        # El encabezado recorta el nombre del cliente al ancho de su casilla,
+        # asi que la sede se toma de "Ciudad". Aqui se puede fijar centro y
+        # sede por "Codigo Nro", p.ej.:
+        #   "<codigo>": {"hospital": "...", "sede": "..."}
+        "centros": {
+            "13S001": {"hospital": "SOLCA MANABÍ", "sede": "PORTOVIEJO"}
+        }
     },
 
     # Normalizacion de la practica por palabras clave, sin tildes ni

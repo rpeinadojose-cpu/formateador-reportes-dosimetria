@@ -9,10 +9,12 @@ Para agregar un laboratorio nuevo:
 """
 from . import dosicontrol
 from . import iess
+from . import dosisrad
 
 PARSERS = [
     dosicontrol,
     iess,
+    dosisrad,
 ]
 
 

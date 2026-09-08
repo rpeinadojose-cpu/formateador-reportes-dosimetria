@@ -24,22 +24,23 @@ uno con su propio formato de informe. Un mismo hospital puede tener varias sedes
 y cada trabajador puede llevar varios dosímetros a la vez. Extraer esto a mano
 es lento y se presta a errores silenciosos.
 
-Hoy están implementados **DOSICONTROL S.A.S.** (informe `DC-008`) y el
-**laboratorio del IESS** (*Informe Dosimetría Personal Termoluminiscente*).
-Falta el tercero: la arquitectura ya está preparada.
+Están implementados los **tres**: **DOSICONTROL S.A.S.** (informe `DC-008`), el
+**laboratorio del IESS** (*Dosimetría Termoluminiscente*) y **DOSISRAD S.A.**
 
-Los dos formatos no se parecen en nada, y eso marcó el diseño:
+No se parecen en nada, y eso marcó el diseño:
 
-| | DOSICONTROL | IESS |
-|---|---|---|
-| Tabla | Sin bordes: se reconstruye por coordenadas | Con bordes: `extract_tables()` |
-| Magnitudes | Las tres en el mismo informe | **Una por archivo**: cuerpo entero, cristalino y extremidades van en PDF separados |
-| Fechas | Por usuario | Del informe completo |
-| `NR` | No aplica | Significa *dosímetro no retornado* → `NE` en el CSV |
-| Práctica | Título de cada tabla (`Área: ...`) | Línea de institución, en cualquier orden: *práctica - sede* o *sede - práctica* |
+| | DOSICONTROL | IESS | DOSISRAD |
+|---|---|---|---|
+| Tabla | Sin bordes: se reconstruye por coordenadas | Con bordes: `extract_tables()` | Con bordes |
+| Magnitudes | Las tres en el informe | **Una por archivo** | Las tres en el informe |
+| Un archivo por | Sede | Magnitud y práctica | Departamento |
+| Fechas | Por usuario | Del informe | Por usuario |
+| `NR` en el informe | No aplica | *No retornado* → `NE` | No aplica |
+| Práctica | Título de tabla (`Área: ...`) | Línea de institución, en cualquier orden | `NOMBRE DEL DEPARTAMENTO` |
 
 Por eso **varios PDF pueden alimentar un mismo CSV**: se agrupa por centro,
-sede y período, no por archivo.
+sede y período, no por archivo. El IESS reparte las magnitudes en tres archivos
+y DOSISRAD reparte los departamentos; los del mismo bimestre acaban juntos.
 
 ## Qué produce
 
@@ -132,6 +133,7 @@ laboratorios/
     base.py                Registro, umbrales, conversión NR/NE, utilidades
     dosicontrol.py         parser del formato DC-008
     iess.py                parser del formato termoluminiscente del IESS
+    dosisrad.py            parser del formato de DOSISRAD S.A.
     logo.py                logotipo de FISIQA para la consola, y el color
     __init__.py            registro de parsers y detección automática
 LEEME.md                   manual de uso y configuración
@@ -148,7 +150,9 @@ Para agregar un laboratorio: copiar `dosicontrol.py`, adaptar `NOMBRE`,
   incidencias.
 - **IESS** verificado sobre 54 informes (3 prácticas × 6 períodos × 3
   magnitudes), sin incidencias.
-- **Pendiente:** el tercer laboratorio del país.
+- **DOSISRAD** verificado sobre 6 informes de SOLCA Manabí (251 dosímetros →
+  214 usuarios), sin incidencias.
+- Los tres laboratorios del país quedaron cubiertos.
 
 ## Presentación
 
