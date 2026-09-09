@@ -24,8 +24,12 @@ import pdfplumber
 from .base import (
     Registro, RE_FECHA, RE_NUM, RE_GUION, RE_NOTA,
     agrupar_en_lineas, texto_de, limpiar, normalizar_clave,
-    separar_sede, convertir_dosis,
+    separar_sede, convertir_dosis, rotulo_de_extremidad,
+    practica_por_palabras,
 )
+
+# Como se rotula cada lado en el log y en el resumen de secciones
+ETIQUETA_LADO = {"izq": "extremidad izquierda", "der": "extremidad derecha"}
 
 NOMBRE = "DOSICONTROL S.A.S."
 CLAVE = "dosicontrol"
@@ -309,6 +313,24 @@ def celdas_independientes(ruta_pdf, cfg):
     return salida
 
 
+def _abre_tabla(lineas, i, salto=3):
+    """
+    Una tabla arranca en la linea i o poco despues, con solo lineas cortas
+    entremedio.
+
+    Se miran varias lineas porque el subtitulo de la subseccion no siempre cabe
+    en una: el nombre del servicio puede ocupar dos renglones y el codigo que a
+    veces lo acompana ("1SQ") puede ir en cualquiera de ellos, o no estar.
+    """
+    for j in range(i, min(i + salto, len(lineas))):
+        t = normalizar_clave(texto_de(lineas[j]))
+        if t.startswith("DOSIS ACUMULADA") or t.startswith("DATOS DEL USUARIO"):
+            return True
+        if len(lineas[j]) > 8 or _idx_fila_datos(lineas[j]) is not None:
+            return False
+    return False
+
+
 # ---------------------------------------------------------------- parser
 def parsear(ruta_pdf: str, cfg: dict):
     registros = []
@@ -333,6 +355,9 @@ def parsear(ruta_pdf: str, cfg: dict):
         toda_la_fila = cfg.get("nota_aplica_a_toda_la_fila", True)
 
         practica = ""
+        lateralidad = ""     # lado vigente: "izq", "der" o "" (sin separar)
+        sub_pendiente = []   # lineas del subtitulo leido, aun sin filas
+        x_nombre = None      # donde empieza la columna del nombre
         rejilla = None
         pend = None          # fila en curso (puede continuar en otra pagina)
         n_esperado = 1       # numero de fila esperado dentro de la seccion
@@ -365,7 +390,13 @@ def parsear(ruta_pdf: str, cfg: dict):
 
             reg.hp10 = convertir_dosis(v10, n10, "hp10", cfg)
             reg.hp3 = convertir_dosis(v3, n3, "hp3", cfg)
-            reg.hp007 = convertir_dosis(v007, n007, "hp007", cfg)
+            # si el informe separo la extremidad por lados, la dosis va a la
+            # columna de su lado y hp007 queda vacia. hp007_crudo conserva el
+            # valor literal en los tres casos, porque es lo que se contrasta
+            # contra la segunda lectura del PDF.
+            columna = {"izq": "hp007_izq", "der": "hp007_der"}.get(
+                reg.lateralidad, "hp007")
+            setattr(reg, columna, convertir_dosis(v007, n007, columna, cfg))
 
             registros.append(reg)
             pend = None
@@ -414,6 +445,8 @@ def parsear(ruta_pdf: str, cfg: dict):
                     pal = [w for w in ln if corte is None or w["x0"] < corte]
                     bruto = texto_de(pal).split(":", 1)[-1].strip(" .")
                     practica = mapa_practica.get(normalizar_clave(bruto), bruto)
+                    lateralidad = ""
+                    sub_pendiente = []
                     n_esperado = 1
                     secciones.append({"nombre": practica, "leidas": 0, "max": 0})
                     continue
@@ -434,7 +467,28 @@ def parsear(ruta_pdf: str, cfg: dict):
                     # El informe numera las filas 1..N dentro de cada seccion:
                     # un salto significa que alguna fila no se pudo leer.
                     n_fila = int(ln[0]["text"])
-                    if n_fila > n_esperado:
+                    if n_fila == 1:
+                        # volver a la fila 1 significa que empieza otra tabla
+                        # dentro de la misma area, no que falte informacion.
+                        # Aqui se resuelve el subtitulo acumulado: puede ocupar
+                        # varias lineas, asi que se juzga el texto completo.
+                        rotulo = limpiar(" ".join(sub_pendiente))
+                        sub_pendiente = []
+                        lateralidad = rotulo_de_extremidad(rotulo)
+                        if not lateralidad and rotulo:
+                            # el subtitulo nombra el servicio del cliente; si se
+                            # reconoce como practica, precisa la del area, y si
+                            # no (p.ej. "CENTRO QUIRURGICO") se respeta el area
+                            nueva = (mapa_practica.get(normalizar_clave(rotulo))
+                                     or practica_por_palabras(rotulo, cfg))
+                            if nueva:
+                                practica = nueva
+                        if secciones and secciones[-1]["leidas"]:
+                            secciones.append({"nombre": practica,
+                                              "leidas": 0, "max": 0})
+                        elif secciones:
+                            secciones[-1]["nombre"] = practica
+                    elif n_fila > n_esperado:
                         avisos.append(
                             "%s p.%d: seccion '%s': la numeracion del informe "
                             "salta de la fila %d a la %d -> faltan %d fila(s) "
@@ -451,6 +505,9 @@ def parsear(ruta_pdf: str, cfg: dict):
 
                     if not secciones:
                         secciones.append({"nombre": practica, "leidas": 0, "max": 0})
+                    if lateralidad:
+                        secciones[-1]["nombre"] = "%s (%s)" % (
+                            practica, ETIQUETA_LADO[lateralidad])
                     secciones[-1]["leidas"] += 1
                     secciones[-1]["max"] = max(secciones[-1]["max"], n_fila)
                     filas_pagina += 1
@@ -463,6 +520,7 @@ def parsear(ruta_pdf: str, cfg: dict):
                         fecha_inicio=ln[idx]["text"],
                         fecha_fin=ln[idx + 1]["text"],
                         practica=practica,
+                        lateralidad=lateralidad,
                         laboratorio=NOMBRE,
                         serie_dosimetro=ln[1]["text"],
                         dias=ln[idx - 1]["text"],
@@ -470,6 +528,8 @@ def parsear(ruta_pdf: str, cfg: dict):
                         ciclo_lectura_hasta=cab["hasta"],
                         fecha_reporte=cab["fecha_reporte"],
                     )
+                    if idx > 2:
+                        x_nombre = ln[2]["x0"]
                     pend = {
                         "reg": reg,
                         "x_lim": ln[idx - 1]["x0"] - 2,
@@ -481,6 +541,29 @@ def parsear(ruta_pdf: str, cfg: dict):
 
                 # -- encabezado repetido: se ignora sin cerrar la fila en curso
                 if any(k in txt_n for k in RUIDO_ENCABEZADO):
+                    continue
+
+                # -- subtitulo de subseccion ("Mano izquierda", "9SQ CICLOTRON")
+                # El informe abre varias tablas dentro de un area y reinicia la
+                # numeracion en cada una. Hay que reconocer el subtitulo aunque
+                # no diga nada del lado: si no, la linea se pega al nombre de la
+                # persona de la fila anterior. El lado, cuando lo hay, queda en
+                # espera y lo adopta la primera fila de la tabla que sigue.
+                # Se reconoce por dos caminos, y basta con uno:
+                #   - por geometria: arranca a la izquierda de la columna del
+                #     nombre (una continuacion de nombre nace dentro de ella) y
+                #     la tabla empieza justo despues;
+                #   - por texto: nombra una extremidad y un lado. Hace falta
+                #     porque el subtitulo puede quedar al pie de la pagina, con
+                #     su tabla ya en la hoja siguiente, y ahi no hay geometria
+                #     que mirar.
+                a_la_izquierda = (x_nombre is not None
+                                  and ln[0]["x0"] < x_nombre - 10)
+                if (rotulo_de_extremidad(txt_n)
+                        or (a_la_izquierda and len(ln) <= 8
+                            and _abre_tabla(lineas, i_ln + 1))):
+                    cerrar()
+                    sub_pendiente.append(texto_de(ln))
                     continue
 
                 # -- continuacion del nombre (y notas sueltas) de la fila en curso

@@ -49,10 +49,11 @@ import pdfplumber
 import laboratorios
 from laboratorios import logo, verificacion
 from laboratorios.base import (
-    CAMPOS_SALIDA, nombre_archivo_seguro, limpiar, normalizar_clave,
+    CAMPOS_SALIDA, CAMPOS_DISPONIBLES,
+    nombre_archivo_seguro, limpiar, normalizar_clave,
 )
 
-VERSION = "3.5.0"
+VERSION = "3.6.0"
 
 # --------------------------------------------------------------------------
 # Configuracion por defecto
@@ -82,6 +83,13 @@ CONFIG_DEFECTO = {
     "verificar": True,
     "separador_csv": ";",
     "codificacion_csv": "utf-8-sig",
+
+    # Columnas del CSV y su orden. Vacio = las de fabrica. Se puede pedir
+    # cualquiera de: cedula, nombre, fecha_inicio, fecha_fin, hp10, hp007,
+    # hp007_izq, hp007_der, hp3, hospital, sede, practica, observacion.
+    # hp007_izq y hp007_der solo se llenan si el informe separa la extremidad
+    # por lados; si no, la lectura va entera a hp007.
+    "columnas": [],
 
     # Primera fila del CSV con el periodo de lectura del informe, antes de la
     # fila de encabezados. Ojo: deja el archivo no rectangular, hay que saltar
@@ -166,14 +174,16 @@ CONFIG_DEFECTO = {
         {"practica": "Hemodinamia e intervencionismo",
          "contiene": ["hemodinamia", "intervencionis", "angiograf", "cateteris",
                       "electrofisiolog", "arritmi", "marcapaso", "traumatolog",
-                      "ortoped", "neurocirug", "gastro", "endoscop", "cpre",
+                      "ortoped", "neurocirug", "gastro", "neumolog",
+                      "broncoscop", "endoscop", "cpre",
                       "colangio", "urolog", "litotric", "vascular",
                       "quirofano hibrido", "arco en c"]},
-        {"practica": "Ciclotrón",
-         "contiene": ["ciclotron"]},
+        {"practica": "Producción de radioisótopos",
+         "contiene": ["ciclotron", "radiofarmac", "radioisotopo",
+                      "radioquimic", "produccion de radio"]},
         {"practica": "Medicina Nuclear",
          "contiene": ["medicina nuclear", "pet", "spect", "endocrinolog",
-                      "gammagraf", "gamma camara", "radiofarmac", "yodo"]},
+                      "gammagraf", "gamma camara", "yodo"]},
         {"practica": "Radioterapia",
          "contiene": ["radioterap", "teleterap", "braquiterap", "acelerador"]},
         {"practica": "Radiodiagnóstico",
@@ -187,7 +197,10 @@ CONFIG_DEFECTO = {
     # Un area que no este aqui se copia literal desde el informe.
     "mapa_practica": {
         "Radiodiagnostico Medico": "Radiodiagnóstico",
-        "Radiologia Intervencionista": "Hemodinamia e intervencionismo"
+        "Radiologia Intervencionista": "Hemodinamia e intervencionismo",
+        "Ciclotron": "Producción de radioisótopos",
+        "Radiofarmacia": "Producción de radioisótopos",
+        "Produccion de radioisotopos": "Producción de radioisótopos"
     }
 }
 
@@ -313,7 +326,17 @@ def anexar_ciclo(registros, cfg):
                          if r.observacion else texto)
 
 
-MAGNITUDES = (("hp10", "hp10_crudo"), ("hp007", "hp007_crudo"), ("hp3", "hp3_crudo"))
+# (columna del CSV, campo con el valor literal del informe, lado exigido).
+# El lado decide que filas alimentan cada columna cuando el informe separa la
+# extremidad por lateralidad: None = no se mira el lado; "" = solo las filas sin
+# lado. Asi el dosimetro de la mano izquierda no compite con el de la derecha.
+MAGNITUDES = (
+    ("hp10", "hp10_crudo", None),
+    ("hp007", "hp007_crudo", ""),
+    ("hp007_izq", "hp007_crudo", "izq"),
+    ("hp007_der", "hp007_crudo", "der"),
+    ("hp3", "hp3_crudo", None),
+)
 
 
 def _num(v):
@@ -356,8 +379,10 @@ def agrupar_por_usuario(registros, cfg, incidencias, origen):
             continue
 
         base = filas[0]
-        for campo, crudo in MAGNITUDES:
-            candidatos = [r for r in filas if getattr(r, crudo) not in ("--", "")]
+        for campo, crudo, lado in MAGNITUDES:
+            candidatos = [r for r in filas
+                          if getattr(r, crudo) not in ("--", "")
+                          and (lado is None or r.lateralidad == lado)]
             if not candidatos:
                 # ningun dosimetro del usuario mide esa magnitud
                 valor = cfg.get("tratar_guiones_como", "")
@@ -424,6 +449,12 @@ def sin_repetidas(registros, incidencias, origen):
     return unicas
 
 
+def columnas_csv(cfg):
+    """Columnas del CSV: las de config.json si son validas, si no las de fabrica."""
+    pedidas = [c for c in (cfg.get("columnas") or []) if c in CAMPOS_DISPONIBLES]
+    return pedidas or CAMPOS_SALIDA
+
+
 def escribir_csv(registros, carpeta_salida, cfg, log, parser=None):
     archivo = os.path.join(carpeta_salida, nombre_salida(registros, cfg) + ".csv")
     with open(archivo, "w", encoding=cfg["codificacion_csv"], newline="") as fh:
@@ -436,11 +467,11 @@ def escribir_csv(registros, carpeta_salida, cfg, log, parser=None):
                 csv.writer(fh, delimiter=cfg["separador_csv"]).writerow(
                     armar(desde, hasta, cfg))
 
-        w = csv.DictWriter(fh, fieldnames=CAMPOS_SALIDA,
+        w = csv.DictWriter(fh, fieldnames=columnas_csv(cfg),
                            delimiter=cfg["separador_csv"])
         w.writeheader()
         for r in registros:
-            w.writerow(r.fila_csv())
+            w.writerow(r.fila_csv(columnas_csv(cfg)))
     log("    -> %-52s %4d usuarios" % (os.path.basename(archivo), len(registros)))
     return archivo
 

@@ -29,6 +29,8 @@ class Registro:
     fecha_fin: str = ""
     hp10: str = ""
     hp007: str = ""
+    hp007_izq: str = ""        # extremidad izquierda, si el informe la separa
+    hp007_der: str = ""        # extremidad derecha
     hp3: str = ""
     hospital: str = ""
     sede: str = ""
@@ -40,6 +42,7 @@ class Registro:
     laboratorio: str = ""
     serie_dosimetro: str = ""
     dias: str = ""
+    lateralidad: str = ""      # "izq" / "der" / "" segun el subtitulo
     hp10_crudo: str = ""
     hp3_crudo: str = ""
     hp007_crudo: str = ""
@@ -51,14 +54,18 @@ class Registro:
     def como_dict(self):
         return asdict(self)
 
-    def fila_csv(self):
+    def fila_csv(self, campos=None):
         d = asdict(self)
-        return {k: d[k] for k in CAMPOS_SALIDA}
+        return {k: d.get(k, "") for k in (campos or CAMPOS_SALIDA)}
 
 
 CAMPOS_SALIDA = ["cedula", "nombre", "fecha_inicio", "fecha_fin",
-                 "hp10", "hp007", "hp3", "hospital", "sede", "practica",
+                 "hp10", "hp007", "hp007_izq", "hp007_der", "hp3",
                  "observacion"]
+# Todo lo que se puede pedir en config.json -> "columnas".
+CAMPOS_DISPONIBLES = ["cedula", "nombre", "fecha_inicio", "fecha_fin",
+                      "hp10", "hp007", "hp007_izq", "hp007_der", "hp3",
+                      "hospital", "sede", "practica", "observacion"]
 CAMPOS_CSV = [f.name for f in fields(Registro)]
 
 
@@ -70,6 +77,9 @@ UMBRALES = {
     "hp10": 0.1,
     "hp3": 0.6,
     "hp007": 2.0,
+    # la extremidad separada por lados es la misma magnitud, mismo umbral
+    "hp007_izq": 2.0,
+    "hp007_der": 2.0,
 }
 
 RE_FECHA = re.compile(r"^\d{4}[/-]\d{2}[/-]\d{2}$")
@@ -101,6 +111,66 @@ def sin_tildes(texto: str) -> str:
 def normalizar_clave(texto: str) -> str:
     """Clave comparable: sin tildes, mayusculas, espacios colapsados."""
     return re.sub(r"\s+", " ", sin_tildes(limpiar(texto)).upper()).strip()
+
+
+# --------------------------------------------------------------------------
+# Lateralidad de la extremidad
+# --------------------------------------------------------------------------
+# Algunos centros piden la dosis de extremidades separada por lado, y el
+# laboratorio la entrega en tablas distintas rotuladas con un subtitulo. No hay
+# una forma unica de escribirlo, asi que la etiqueta se normaliza (sin tildes
+# ni signos) y se busca la palabra del lado. Todas estas caen en la misma
+# columna:
+#
+#     hp007_izq | Hp(0,07) izq | Hp(0,07) extremidad izquierda
+#     Extremidad izq | Anillo izquierdo | Mano izquierda
+#
+LADOS = (
+    ("izq", ("IZQ", "IZQD", "IZQDA", "IZQUIERDA", "IZQUIERDO",
+             "IZQUIERDAS", "IZQUIERDOS", "LEFT")),
+    ("der", ("DER", "DCHA", "DCHO", "DRA", "DRCHA", "DERECHA", "DERECHO",
+             "DERECHAS", "DERECHOS", "RIGHT")),
+)
+
+
+def _palabras(texto):
+    """
+    Palabras del texto normalizado, separando letras de cifras.
+
+    El laboratorio pega el contador de subseccion al rotulo ("8Mano derecha"),
+    y "Hp(0,07)" debe dar HP y 007 por separado.
+    """
+    return set(re.findall(r"[A-Z]+|\d+", normalizar_clave(texto)))
+
+
+def lateralidad_de(texto):
+    """
+    Devuelve "izq", "der" o "" segun el rotulo de una tabla.
+
+    Compara palabra por palabra, no por subcadena: de lo contrario cualquier
+    palabra que contenga "der" activaria el lado por accidente. Si el rotulo
+    nombra los dos lados a la vez no se decide nada.
+    """
+    hallados = [lado for lado, claves in LADOS
+                if _palabras(texto).intersection(claves)]
+    return hallados[0] if len(hallados) == 1 else ""
+
+
+# Partes del cuerpo (o la propia magnitud) con que se rotula la tabla. Se
+# exige una de estas ADEMAS del lado: un apellido como "Izquierdo" nombra un
+# lado pero no una extremidad, y no debe confundirse con un subtitulo.
+PARTES_CUERPO = ("MANO", "MANOS", "ANILLO", "ANILLOS", "DEDO", "DEDOS",
+                 "MUNECA", "MUNECAS", "EXTREMIDAD", "EXTREMIDADES",
+                 "BRAZO", "BRAZOS", "PIE", "PIES", "PULSERA",
+                 "HP", "HP007", "HP0", "007")
+
+
+def rotulo_de_extremidad(texto):
+    """Lado de una tabla de Hp(0.07), o "" si el texto no es ese rotulo."""
+    lado = lateralidad_de(texto)
+    if not lado:
+        return ""
+    return lado if _palabras(texto).intersection(PARTES_CUERPO) else ""
 
 
 def practica_por_palabras(texto, cfg):

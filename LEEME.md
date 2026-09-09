@@ -80,7 +80,7 @@ encabezados de columna:
 
 ```
 Lectura Desde;2025/01/12;Lectura Hasta;2025/03/11
-cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp3;hospital;sede;practica;observacion
+cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp007_izq;hp007_der;hp3;observacion
 ```
 
 > La fila de título deja el archivo no rectangular: al importarlo hay que
@@ -91,13 +91,22 @@ cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp3;hospital;sede;practica;obser
 
 * **Una fila por usuario.** Si en el informe un usuario aparece varias veces es
   porque tiene varios dosímetros; sus lecturas se fusionan en una sola fila.
-* `hospital` y `sede` salen del encabezado del informe. Cuando el centro tiene
-  varias sedes, el informe la indica entre paréntesis tras el nombre del
-  cliente; si no la trae, se toma de `sede_por_defecto`.
-* `practica` sale del título de cada tabla del informe (`Área: ...`):
-  *Radiodiagnóstico Médico* → `Radiodiagnóstico`, *Radiología Intervencionista*
-  → `Hemodinamia e intervencionismo`. Se ajusta en `mapa_practica`; un área que
-  no esté en el mapa se copia literal.
+* **Extremidades por lateralidad.** Algunos centros piden la dosis de
+  extremidades separada por lado. El laboratorio la entrega en tablas aparte,
+  rotuladas *Mano izquierda* / *Mano derecha*, y esas lecturas van a
+  `hp007_izq` y `hp007_der`, dejando `hp007` en blanco. Quien lleva un solo
+  dosímetro de extremidades sin distinguir lado usa `hp007` y deja las otras
+  dos en blanco. El rótulo se lee sin tildes ni signos y palabra por palabra,
+  así que todas estas caen en la misma columna: `hp007_izq`, `Hp(0,07) izq`,
+  `Hp(0,07) extremidad izquierda`, `Extremidad izq`, `Anillo izquierdo`,
+  `Mano izquierda`. Se exige que el rótulo nombre la parte del cuerpo además
+  del lado, para no confundir un apellido como *Izquierdo* con un subtítulo.
+* **Columnas a la carta.** `columnas` en `config.json` fija cuáles se escriben
+  y en qué orden. Vacío = las de arriba. Se puede pedir cualquiera de: `cedula`,
+  `nombre`, `fecha_inicio`, `fecha_fin`, `hp10`, `hp007`, `hp007_izq`,
+  `hp007_der`, `hp3`, `hospital`, `sede`, `practica`, `observacion`. `hospital`
+  y `sede` salen del encabezado del informe (y siguen decidiendo el nombre del
+  archivo aunque no se escriban); `practica`, del título de cada tabla.
 * `observacion` trae los códigos de nota del informe, tal cual: `DD` dosímetro
   dañado, `NU` no usado, `NC` no canjeado, `DP` perdido, `DA` dosis asignada por
   la Autoridad Reguladora, `SLI` superior al límite de investigación, `DNV`
@@ -165,6 +174,7 @@ Se crea solo la primera vez que se ejecuta, junto al `.exe`. Claves útiles:
 | `dosisrad.omitir_ambiental` | Omitir los dosímetros de área (`AMB`). `true` por defecto. |
 | `practica_por_palabra_clave` | Normaliza la práctica por palabras clave (prefijo de palabra, sin tildes). |
 | `mapa_practica` | Normaliza el título de tabla (`Área: ...`) que va en la columna `practica`. |
+| `columnas` | Columnas del CSV y su orden. Vacío = las de fábrica. |
 | `texto_ciclo_en_observacion` | Texto del ciclo anexado a `observacion`. `"Ciclo {ciclo}"` por defecto; `""` para no anexarlo. |
 | `formato_ciclo` | Plantilla de la etiqueta del ciclo. `"{anio}-C{numero}"` por defecto. |
 | `anio_del_ciclo` | De qué fecha sale el año: `"fin"` (actual) o `"inicio"`. |
