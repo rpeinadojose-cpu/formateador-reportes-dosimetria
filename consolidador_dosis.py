@@ -53,7 +53,7 @@ from laboratorios.base import (
     nombre_archivo_seguro, limpiar, normalizar_clave,
 )
 
-VERSION = "3.6.0"
+VERSION = "3.6.1"
 
 # --------------------------------------------------------------------------
 # Configuracion por defecto

@@ -61,7 +61,7 @@ class Registro:
 
 CAMPOS_SALIDA = ["cedula", "nombre", "fecha_inicio", "fecha_fin",
                  "hp10", "hp007", "hp007_izq", "hp007_der", "hp3",
-                 "observacion"]
+                 "hospital", "sede", "practica", "observacion"]
 # Todo lo que se puede pedir en config.json -> "columnas".
 CAMPOS_DISPONIBLES = ["cedula", "nombre", "fecha_inicio", "fecha_fin",
                       "hp10", "hp007", "hp007_izq", "hp007_der", "hp3",

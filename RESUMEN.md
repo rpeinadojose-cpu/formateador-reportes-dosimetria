@@ -49,7 +49,7 @@ y DOSISRAD reparte los departamentos; los del mismo bimestre acaban juntos.
 
 ```
 Lectura Desde;2024/09/18;Lectura Hasta;2024/11/17
-cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp007_izq;hp007_der;hp3;observacion
+cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp007_izq;hp007_der;hp3;hospital;sede;practica;observacion
 1700000000;Nombre Apellido Ejemplo;2024/05/18;2024/11/17;0.358;5.370;0.668;HOSPITAL EJEMPLO;CUMBAYA;Hemodinamia e intervencionismo;DOP | Ciclo 2024-C7
 ```
 

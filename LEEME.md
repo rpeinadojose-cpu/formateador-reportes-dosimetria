@@ -80,7 +80,7 @@ encabezados de columna:
 
 ```
 Lectura Desde;2025/01/12;Lectura Hasta;2025/03/11
-cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp007_izq;hp007_der;hp3;observacion
+cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp007_izq;hp007_der;hp3;hospital;sede;practica;observacion
 ```
 
 > La fila de título deja el archivo no rectangular: al importarlo hay que
@@ -101,12 +101,20 @@ cedula;nombre;fecha_inicio;fecha_fin;hp10;hp007;hp007_izq;hp007_der;hp3;observac
   `Hp(0,07) extremidad izquierda`, `Extremidad izq`, `Anillo izquierdo`,
   `Mano izquierda`. Se exige que el rótulo nombre la parte del cuerpo además
   del lado, para no confundir un apellido como *Izquierdo* con un subtítulo.
+* `hospital` y `sede` salen del encabezado del informe. Cuando el centro tiene
+  varias sedes, el informe la indica entre paréntesis tras el nombre del
+  cliente; si no la trae, se toma de `sede_por_defecto`.
+* `practica` sale del título de la tabla (`Área: ...`): *Radiodiagnóstico
+  Médico* → `Radiodiagnóstico`, *Radiología Intervencionista* →
+  `Hemodinamia e intervencionismo`. Se ajusta en `mapa_practica`; un área que no
+  esté en el mapa se copia literal. Si el informe abre subtablas dentro del área
+  y el subtítulo nombra un servicio reconocible (*Gastroenterología*,
+  *Ciclotrón*), ese subtítulo precisa la práctica; si no lo es (*Centro
+  quirúrgico*), manda el área.
 * **Columnas a la carta.** `columnas` en `config.json` fija cuáles se escriben
   y en qué orden. Vacío = las de arriba. Se puede pedir cualquiera de: `cedula`,
   `nombre`, `fecha_inicio`, `fecha_fin`, `hp10`, `hp007`, `hp007_izq`,
-  `hp007_der`, `hp3`, `hospital`, `sede`, `practica`, `observacion`. `hospital`
-  y `sede` salen del encabezado del informe (y siguen decidiendo el nombre del
-  archivo aunque no se escriban); `practica`, del título de cada tabla.
+  `hp007_der`, `hp3`, `hospital`, `sede`, `practica`, `observacion`.
 * `observacion` trae los códigos de nota del informe, tal cual: `DD` dosímetro
   dañado, `NU` no usado, `NC` no canjeado, `DP` perdido, `DA` dosis asignada por
   la Autoridad Reguladora, `SLI` superior al límite de investigación, `DNV`
